@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.5.8-mobile-fix
+// @version      1.5.9-mobile-fix
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -74,9 +74,11 @@
         const posToCss = (posObj) => Object.entries(posObj).map(([key, value]) => `${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}: ${value};`).join(' ');
         let characterStyles = '';
         if (settings.characterMode === 'multi') {
+            // 멀티 캐릭터: 화면 높이를 90%로 제한하여 하단 UI와 겹치지 않도록 조정
             characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 90vh; display: flex; justify-content: center; align-items: flex-end; padding: 0 2%; pointer-events: none; z-index: 2; gap: 2%; } .vn-character-slot { flex: 1 1 0; max-width: 33%; height: 100%; display: flex; justify-content: center; align-items: flex-end; transition: opacity 0.4s, transform 0.4s; } .vn-character-cg { max-width: 95%; max-height: 100%; object-fit: contain; }`;
         } else {
-             characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 100%; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; z-index: 2; } .vn-character-cg { max-width: 40%; max-height: 95%; object-fit: contain; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; opacity: 0; transform: translateY(20px); } .vn-character-cg.visible { opacity: 1; transform: translateY(0); }`;
+             // 단일 캐릭터: 캐릭터가 화면 높이를 꽉 채우도록 조정 (max-height: 95%)
+             characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 100%; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; z-index: 2; } .vn-character-cg { max-width: 50%; max-height: 95%; object-fit: contain; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; opacity: 0; transform: translateY(20px); } .vn-character-cg.visible { opacity: 1; transform: translateY(0); }`;
         }
         return `
             #${DOM_IDS.CONTAINER} { position: fixed !important; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 99990; pointer-events: none; display: none; }
@@ -85,62 +87,65 @@
             #${DOM_IDS.EVENT_CG} { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background-color: #000; z-index: 1; opacity: 0; transition: opacity 0.5s ease-in-out; pointer-events: none; }
             #${DOM_IDS.EVENT_CG}.visible { opacity: 1; }
             ${characterStyles}
-            #${DOM_IDS.DIALOGUE_BOX} { z-index: 3; position: absolute; ${posToCss(settings.dialogueBoxPos)} width: 90%; max-width: 1200px; background-color: rgba(0, 0, 0, 0.8); border: 1px solid #555; border-radius: 10px; padding: 25px 30px; color: white; font-family: 'Pretendard', sans-serif; pointer-events: auto; box-sizing: border-box; cursor: pointer; }
-            #${DOM_IDS.CHAR_NAME} { position: absolute; top: 0; left: 40px; transform: translateY(-50%); background-color: rgba(40, 40, 40, 0.9); color: white; font-weight: bold; font-size: 1.2em; padding: 5px 15px; border-radius: 6px; border: 1px solid #777; z-index: 1; }
-            #${DOM_IDS.DIALOGUE_TEXT} { flex-grow: 1; font-size: 1.5em; line-height: 1.6; min-height: 80px; }
+
+            /* [수정] 대화창: 가로 모드에 맞게 세로 크기 최소화 */
+            #${DOM_IDS.DIALOGUE_BOX} {
+                z-index: 3; position: absolute; ${posToCss(settings.dialogueBoxPos)}
+                width: 95%; /* 화면 너비에 맞춤 */
+                max-width: 1200px;
+                background-color: rgba(0, 0, 0, 0.8);
+                border: 1px solid #555; border-radius: 10px;
+                padding: 12px 25px; /* 세로 패딩 대폭 축소 */
+                color: white; font-family: 'Pretendard', sans-serif;
+                pointer-events: auto; box-sizing: border-box; cursor: pointer;
+            }
+            /* [수정] 캐릭터 이름: 대화창에 맞춰 컴팩트하게 조정 */
+            #${DOM_IDS.CHAR_NAME} {
+                position: absolute; top: 0; left: 30px; transform: translateY(-50%);
+                background-color: rgba(40, 40, 40, 0.9);
+                color: white; font-weight: bold; font-size: 1.1em; /* 폰트 소폭 축소 */
+                padding: 4px 12px; /* 패딩 축소 */
+                border-radius: 6px; border: 1px solid #777; z-index: 1;
+            }
+            /* [수정] 대화 텍스트: 가독성을 유지하며 세로 공간 절약 */
+            #${DOM_IDS.DIALOGUE_TEXT} {
+                flex-grow: 1;
+                font-size: 1.2em; /* 폰트 소폭 축소 */
+                line-height: 1.5; /* 줄 간격 소폭 축소 */
+                min-height: 50px; /* 최소 높이 대폭 축소 */
+            }
             #${DOM_IDS.DIALOGUE_TEXT}.typing-effect { user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; }
             .action-text { font-style: italic; color: #ccc; }
-            #${DOM_IDS.STATUS_WINDOW} { z-index: 3; position: absolute; ${posToCss(settings.statusWindowPos)} width: 300px; max-height: 80vh; background-color: rgba(0, 0, 0, 0.7); border: 1px solid #555; border-radius: 8px; padding: 15px; color: #eee; font-size: 14px; white-space: pre-wrap; overflow-y: auto; pointer-events: auto; }
-            .vn-control-panel { position: fixed; left: 20px; bottom: 20px; z-index: 99999; display: flex; gap: 10px; }
-            .vn-control-button { background-color: #444; color: white; border: none; border-radius: 8px; padding: 10px 15px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background-color 0.2s; }
+
+            /* [수정] 상태창: 화면 상단 중앙에 배치하여 시야 방해 최소화 */
+            #${DOM_IDS.STATUS_WINDOW} {
+                z-index: 3; position: absolute; ${posToCss(settings.statusWindowPos)}
+                width: 85%; /* 너비 확장 */
+                max-height: 40vh; /* 최대 높이를 화면의 40%로 제한 */
+                background-color: rgba(0, 0, 0, 0.7);
+                border: 1px solid #555; border-radius: 8px;
+                padding: 10px 15px; /* 패딩 축소 */
+                color: #eee; font-size: 13px; /* 폰트 축소 */
+                white-space: pre-wrap; overflow-y: auto; pointer-events: auto;
+            }
+            /* [수정] 컨트롤 패널 및 버튼: 터치하기 쉽도록 크기 조정 */
+            .vn-control-panel { position: fixed; left: 15px; bottom: 15px; z-index: 99999; display: flex; gap: 10px; }
+            .vn-control-button { background-color: #444; color: white; border: none; border-radius: 8px; padding: 12px 18px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background-color 0.2s; }
             #${DOM_IDS.START_BUTTON} { background-color: #1a73e8; } #${DOM_IDS.START_BUTTON}:hover { background-color: #1765c7; }
             #${DOM_IDS.START_BUTTON}.active { background-color: #c70000; } #${DOM_IDS.START_BUTTON}.active:hover { background-color: #a00000; }
             #${DOM_IDS.SETTINGS_BUTTON}:hover { background-color: #555; }
-            #${DOM_IDS.BACK_BUTTON} { position: absolute; bottom: 15px; right: 20px; font-size: 2em; color: #888; cursor: pointer; transition: color 0.2s; display: none; }
+            #${DOM_IDS.BACK_BUTTON} { position: absolute; bottom: 10px; right: 15px; font-size: 2.2em; color: #888; cursor: pointer; transition: color 0.2s; display: none; }
             #${DOM_IDS.BACK_BUTTON}:hover { color: #ccc; }
             .vn-ui-draggable { border: 2px dashed #00aaff !important; cursor: move !important; user-select: none; pointer-events: auto !important; }
             #${DOM_IDS.CLIP_EDIT_HANDLE} { position: fixed; border: 2px dashed #ff4757; background-color: rgba(255, 71, 87, 0.2); cursor: move; z-index: 99998; user-select: none; }
-            .vn-resize-handle {
-                position: absolute;
-                width: 14px; /* 시각적 크기 살짝 키움 */
-                height: 14px;
-                background-color: white;
-                border: 2px solid #333;
-                border-radius: 50%; /* 원형으로 변경하여 터치 친화적으로 만듬 */
-                z-index: 99999;
-            }
-            /* [추가] 눈에 보이지 않는 실제 터치 영역을 32x32px로 확장 */
-            .vn-resize-handle::before {
-                content: '';
-                position: absolute;
-                left: -9px;
-                top: -9px;
-                width: 32px;
-                height: 32px;
-                background: transparent;
-            }
-            /* [수정] 커진 핸들 크기에 맞게 위치 재조정 */
-            .vn-resize-handle.top-left { top: -8px; left: -8px; cursor: nwse-resize; }
-            .vn-resize-handle.top { top: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-            .vn-resize-handle.top-right { top: -8px; right: -8px; cursor: nesw-resize; }
-            .vn-resize-handle.left { top: 50%; left: -8px; transform: translateY(-50%); cursor: ew-resize; }
-            .vn-resize-handle.right { top: 50%; right: -8px; transform: translateY(-50%); cursor: ew-resize; }
-            .vn-resize-handle.bottom-left { bottom: -8px; left: -8px; cursor: nesw-resize; }
-            .vn-resize-handle.bottom { bottom: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-            .vn-resize-handle.bottom-right { bottom: -8px; right: -8px; cursor: nwse-resize; }
+            .vn-resize-handle { position: absolute; width: 14px; height: 14px; background-color: white; border: 2px solid #333; border-radius: 50%; z-index: 99999; }
+            .vn-resize-handle::before { content: ''; position: absolute; left: -9px; top: -9px; width: 32px; height: 32px; background: transparent; }
+            .vn-resize-handle.top-left { top: -8px; left: -8px; cursor: nwse-resize; } .vn-resize-handle.top { top: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .vn-resize-handle.top-right { top: -8px; right: -8px; cursor: nesw-resize; } .vn-resize-handle.left { top: 50%; left: -8px; transform: translateY(-50%); cursor: ew-resize; } .vn-resize-handle.right { top: 50%; right: -8px; transform: translateY(-50%); cursor: ew-resize; } .vn-resize-handle.bottom-left { bottom: -8px; left: -8px; cursor: nesw-resize; } .vn-resize-handle.bottom { bottom: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .vn-resize-handle.bottom-right { bottom: -8px; right: -8px; cursor: nwse-resize; }
             @keyframes shake-vertical { 0%, 100% { transform: translateY(0); } 10%, 30%, 50%, 70%, 90% { transform: translateY(-4px); } 20%, 40%, 60%, 80% { transform: translateY(4px); } } .vn-anim-shake-vertical { animation: shake-vertical 0.7s cubic-bezier(.36,.07,.19,.97) both; }
             @keyframes shake-horizontal { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); } 20%, 40%, 60%, 80% { transform: translateX(4px); } } .vn-anim-shake-horizontal { animation: shake-horizontal 0.7s cubic-bezier(.36,.07,.19,.97) both; }
             @keyframes flash { from, 50%, to { opacity: 1; } 25%, 75% { opacity: 0.6; } } .vn-anim-flash { animation: flash 0.8s; }
             @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-15px); } 60% { transform: translateY(-8px); } } .vn-anim-bounce { animation: bounce 1s; }
             @keyframes vibrate { 0% { transform: translate(0); } 20% { transform: translate(-1px, 1px); } 40% { transform: translate(-1px, -1px); } 60% { transform: translate(1px, 1px); } 80% { transform: translate(1px, -1px); } 100% { transform: translate(0); } } .vn-anim-vibrate { animation: vibrate 0.2s linear infinite; animation-iteration-count: 3; }
-            @media (orientation: landscape) and (max-height: 600px) {
-                #${DOM_IDS.DIALOGUE_BOX} { width: 95%; padding: 15px 20px; bottom: 20px !important; }
-                #${DOM_IDS.DIALOGUE_TEXT} { font-size: 1.25em; min-height: 50px; }
-                #${DOM_IDS.CHAR_NAME} { font-size: 1.1em; padding: 4px 12px; left: 25px; }
-                .vn-control-panel { left: 15px; bottom: 15px; }
-                .vn-control-button { padding: 12px 18px; font-size: 16px; }
-                .vn-modal-content { width: 95%; margin: 2% auto; max-height: 95vh; }
-            }
         `;
     }
 
