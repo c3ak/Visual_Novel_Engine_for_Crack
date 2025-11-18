@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile_TEST (Landscape)
 // @namespace    http://tampermonkey.net/
-// @version      1.5.1-mobile
+// @version      1.5-mobile
 // @description  모바일 가로 모드에 최적화된 비주얼 노벨 엔진입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -212,28 +212,28 @@
             controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
             document.body.appendChild(controlPanel);
             const startButton = document.getElementById(DOM_IDS.START_BUTTON);
-const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
-
-
             if (startButton) {
                 const handleToggle = (e) => {
-                    e.preventDefault(); // 안드로이드, iOS 모두에서 이벤트 중복 실행 방지
+                    e.preventDefault();
+                    e.stopPropagation(); // 이벤트가 다른 곳으로 퍼지는 것을 막습니다.
                     toggleVNEngine();
                 };
-    // 마우스 클릭(PC 환경)과 터치(모바일 환경) 모두 지원
                 startButton.addEventListener('click', handleToggle);
-                startButton.addEventListener('touchstart', handleToggle, { passive: false });
+                startButton.addEventListener('touchend', handleToggle); // 'touchstart' 대신 'touchend'를 사용합니다.
             }
 
+
+            const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
             if (settingsButton) {
                 const openSettings = (e) => {
-        e.preventDefault(); // 안드로이드, iOS 모두에서 이벤트 중복 실행 방지
-        SettingsManager.open();
-    };
-    // 마우스 클릭(PC 환경)과 터치(모바일 환경) 모두 지원
-    settingsButton.addEventListener('click', openSettings);
-    settingsButton.addEventListener('touchstart', openSettings, { passive: false });
-}
+                    e.preventDefault();
+                    e.stopPropagation(); // 이벤트가 다른 곳으로 퍼지는 것을 막습니다.
+                    SettingsManager.open();
+                };
+                settingsButton.addEventListener('click', openSettings);
+                settingsButton.addEventListener('touchend', openSettings); // 'touchstart' 대신 'touchend'를 사용합니다.
+            }
+
             SettingsManager.createModal();
             console.log("VN Engine: 비주얼 노벨 UI 및 제어판이 준비되었습니다.");
         },
