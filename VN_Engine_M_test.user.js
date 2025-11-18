@@ -209,8 +209,29 @@
             const controlPanel = document.createElement('div'); controlPanel.className = 'vn-control-panel';
             controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
             document.body.appendChild(controlPanel);
-            document.getElementById(DOM_IDS.START_BUTTON)?.addEventListener('click', toggleVNEngine);
-            document.getElementById(DOM_IDS.SETTINGS_BUTTON)?.addEventListener('click', () => SettingsManager.open());
+            const startButton = document.getElementById(DOM_IDS.START_BUTTON);
+const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
+
+
+            if (startButton) {
+                const handleToggle = (e) => {
+                    e.preventDefault(); // 안드로이드, iOS 모두에서 이벤트 중복 실행 방지
+                    toggleVNEngine();
+                };
+    // 마우스 클릭(PC 환경)과 터치(모바일 환경) 모두 지원
+                startButton.addEventListener('click', handleToggle);
+                startButton.addEventListener('touchstart', handleToggle, { passive: false });
+            }
+
+            if (settingsButton) {
+                const openSettings = (e) => {
+        e.preventDefault(); // 안드로이드, iOS 모두에서 이벤트 중복 실행 방지
+        SettingsManager.open();
+    };
+    // 마우스 클릭(PC 환경)과 터치(모바일 환경) 모두 지원
+    settingsButton.addEventListener('click', openSettings);
+    settingsButton.addEventListener('touchstart', openSettings, { passive: false });
+}
             SettingsManager.createModal();
             console.log("VN Engine: 비주얼 노벨 UI 및 제어판이 준비되었습니다.");
         },
