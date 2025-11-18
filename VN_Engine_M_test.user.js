@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
+// @name         Visual Novel Engine V1_mobile (Beta)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.6-mobile-fix
+// @version      1.0-mobile-beta
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -10,7 +10,6 @@
 // @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // ==/UserScript==
-
 (function() {
     'use strict';
 
@@ -96,11 +95,60 @@
             #${DOM_IDS.STATUS_TOGGLE}:hover { background-color: #444; }
             #${DOM_IDS.STATUS_WINDOW} { z-index: 3; position: absolute; ${posToCss(settings.statusWindowPos)} width: 220px; max-height: 60vh; background-color: rgba(0, 0, 0, 0.75); border: 1px solid #555; border-radius: 8px; padding: 15px; color: #eee; font-size: 14px; white-space: pre-wrap; overflow-y: auto; pointer-events: auto; transform-origin: top right; transition: opacity 0.3s, transform 0.3s; }
             #${DOM_IDS.STATUS_WINDOW}.collapsed { opacity: 0; transform: scale(0.8); pointer-events: none; }
-            .vn-control-panel { position: fixed; left: 15px; bottom: 15px; z-index: 99999; display: flex; gap: 10px; }
-            .vn-control-button { background-color: #444; color: white; border: none; border-radius: 8px; padding: 12px 18px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background-color 0.2s; }
+            .vn-control-panel {
+                position: fixed;
+                left: 0;
+                bottom: 15px; /* 스크린샷과 동일한 하단 위치 */
+                z-index: 99999;
+                display: flex;
+                align-items: center;
+                background-color: rgba(30, 30, 30, 0.8);
+                border-radius: 0 8px 8px 0;
+                box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+                transition: transform 0.35s ease-in-out; /* 부드러운 전환 효과 */
+            }
+
+            /* [수정] 서랍이 닫혔을 때 (collapsed)의 위치 */
+            .vn-control-panel.collapsed {
+                /* 패널 전체 너비만큼 왼쪽으로 이동시키되, 토글 버튼 너비만큼은 다시 오른쪽으로 당겨서 보이게 함 */
+                transform: translateX(-100%) translateX(48px); /* 48px는 토글 버튼 너비 */
+            }
+
+            /* [추가] 서랍 내용(버튼 목록) 컨테이너 */
+            #vn-drawer-content {
+                display: flex; /* 버튼을 가로로 배치 */
+                gap: 8px;
+                padding: 8px 0 8px 8px; /* 오른쪽 패딩은 없음 */
+                overflow: hidden;
+                white-space: nowrap;
+            }
+
+            /* [수정] 모든 제어 버튼의 공통 스타일 */
+            .vn-control-button {
+                background-color: #444;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 12px 18px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                transition: background-color 0.2s;
+                flex-shrink: 0;
+            }
+
+            /* [수정] 토글 버튼(손잡이) 전용 스타일 */
+            #vn-drawer-toggle {
+                padding: 12px 14px;
+                border-radius: 0 8px 8px 0; /* 오른쪽만 둥글게 */
+                background-color: #333;
+                font-size: 20px;
+                line-height: 1.1; /* 아이콘 세로 정렬 미세조정 */
+            }
+
             #${DOM_IDS.START_BUTTON} { background-color: #1a73e8; } #${DOM_IDS.START_BUTTON}:hover { background-color: #1765c7; }
             #${DOM_IDS.START_BUTTON}.active { background-color: #c70000; } #${DOM_IDS.START_BUTTON}.active:hover { background-color: #a00000; }
-            #${DOM_IDS.SETTINGS_BUTTON}:hover { background-color: #555; }
+            #${DOM_IDS.SETTINGS_BUTTON}:hover, #vn-drawer-toggle:hover { background-color: #555; }
             #${DOM_IDS.INPUT_BUTTON} {
                 position: absolute;
                 top: -18px;
@@ -195,7 +243,7 @@
     };
 
     // --- UI 관리자 ---
-const UIManager = {
+    const UIManager = {
         elements: {}, activeCharacters: [], dragInfo: {}, resizeInfo: {},
 
         getEventCoords(e) {
@@ -215,9 +263,29 @@ const UIManager = {
             this.elements.statusToggle?.addEventListener('click', () => this.toggleStatusWindow());
             this.elements.dialogueBox?.addEventListener('click', (e) => { if (e.target.id !== DOM_IDS.BACK_BUTTON && !e.target.closest(`#${DOM_IDS.BACK_BUTTON}`)) StageManager.next(); });
             this.elements.backButton?.addEventListener('click', (e) => { e.stopPropagation(); StageManager.previous(); });
-            const controlPanel = document.createElement('div'); controlPanel.className = 'vn-control-panel';
-           controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
+            const controlPanel = document.createElement('div');
+            // [수정] 초기 상태를 닫힘으로 설정하기 위해 'collapsed' 클래스를 추가합니다.
+            controlPanel.className = 'vn-control-panel collapsed';
+
+            // --- [수정] 사이드 서랍 형태의 HTML 구조로 변경 ---
+            controlPanel.innerHTML = `
+                <div id="vn-drawer-content">
+                    <button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button>
+                    <button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>
+                </div>
+                <button id="vn-drawer-toggle" class="vn-control-button">›</button>
+            `;
+            // ------------------------------------
+
             document.body.appendChild(controlPanel);
+
+            // --- [수정] 토글 버튼이 부모(controlPanel)의 클래스를 변경하도록 수정 ---
+            const drawerToggle = document.getElementById('vn-drawer-toggle');
+            drawerToggle.addEventListener('click', () => {
+                controlPanel.classList.toggle('collapsed');
+                // 아이콘 모양을 화살표로 변경
+                drawerToggle.textContent = controlPanel.classList.contains('collapsed') ? '›' : '‹';
+            });
             this.createInputModal();
 
             // --- [추가] 입력 버튼을 대화창 내부에 직접 생성하고 이벤트 리스너를 추가합니다. ---
