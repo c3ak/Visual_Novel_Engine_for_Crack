@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.5.6-mobile-final
+// @version      1.5.7-mobile-final
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -454,11 +454,22 @@
     getDialogueTextElement() { return this.elements.dialogueText; }
 };
 
-    // --- 데이터 패쳐 및 전역 로직 --- (변경 없음)
+// --- 데이터 패쳐 및 전역 로직 --- (변경 없음)
     class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } } function extractCookie(key) { const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`)); return e ? decodeURIComponent(e) : null; } async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } } class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
     let lastMessageId = null, isChecking = false, pollingInterval = null, isEngineActive = false;
     function applyContainerClipping() { if (!isEngineActive) return; const vnContainer = UIManager.elements.container; if (!vnContainer) return; const rect = SettingsManager.settings.clipRect; if (rect) { const clipPathValue = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${rect.left}px ${rect.top}px, ${rect.left + rect.width}px ${rect.top}px, ${rect.left + rect.width}px ${rect.top + rect.height}px, ${rect.left}px ${rect.top + rect.height}px, ${rect.left}px ${rect.top}px)`; vnContainer.style.clipPath = clipPathValue; } else { vnContainer.style.clipPath = 'none'; } }
-    function getChatInfoFromUrl() { const pathname = window.location.pathname; const idPattern = /([a-f0-9]{24})/; let match; match = pathname.match(new RegExp("/episodes/" + idPattern.source)); if (match) return { id: match, type: 'episode' }; match = pathname.match(new RegExp("/chats/" + idPattern.source)); if (match) return { id: match, type: 'chat' }; match = pathname.match(new RegExp("/c/" + idPattern.source)); if (match) return { id: match, type: 'chat' }; return null; }
+    function getChatInfoFromUrl() {
+    const pathname = window.location.pathname;
+    const idPattern = /([a-f0-9]{24})/;
+    let match;
+    match = pathname.match(new RegExp("/episodes/" + idPattern.source));
+    if (match) return { id: match[1], type: 'episode' };
+    match = pathname.match(new RegExp("/chats/" + idPattern.source));
+    if (match) return { id: match[1], type: 'chat' };
+    match = pathname.match(new RegExp("/c/" + idPattern.source));
+    if (match) return { id: match[1], type: 'chat' };
+    return null;
+}
     async function checkForNewMessages() { if (!isEngineActive || isChecking || (StageManager.isVisible && !StageManager.isFinished)) return; isChecking = true; try { const chatInfo = getChatInfoFromUrl(); if (!chatInfo) return; const fetcher = new CrackMessageFetcher(chatInfo.id); const latestMessages = await fetcher.fetch(10); if (latestMessages.length === 0) return; if (lastMessageId === null) { lastMessageId = latestMessages[latestMessages.length - 1].id; return; } const lastSeenIndex = latestMessages.findIndex(msg => msg.id === lastMessageId); const newMessages = latestMessages.slice(lastSeenIndex + 1); if (newMessages.length > 0) { const assistantMessages = newMessages.filter(msg => msg.role === 'assistant' && msg.content && msg.content.trim() !== ''); if (assistantMessages.length > 0) { const fullResponse = assistantMessages.map(m => m.content).join('\n\n'); StageManager.start(fullResponse); } lastMessageId = newMessages[newMessages.length - 1].id; } } catch (error) { console.error("VN Engine: 새 메시지 확인 중 오류:", error); } finally { isChecking = false; } }
     function startRealtimeChecker() { const chatInfo = getChatInfoFromUrl(); if (chatInfo) { lastMessageId = null; pollingInterval = setInterval(checkForNewMessages, 2500); checkForNewMessages(); setTimeout(applyContainerClipping, 100); window.addEventListener('resize', applyContainerClipping); } }
     function stopRealtimeChecker() { if (pollingInterval) clearInterval(pollingInterval); pollingInterval = null; lastMessageId = null; isChecking = false; StageManager.hide(); window.removeEventListener('resize', applyContainerClipping); if (UIManager.elements.container) UIManager.elements.container.style.clipPath = 'none'; }
