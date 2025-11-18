@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.5.4-mobile-final
+// @version      1.5.5-mobile-final
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -101,8 +101,34 @@
             #${DOM_IDS.BACK_BUTTON}:hover { color: #ccc; }
             .vn-ui-draggable { border: 2px dashed #00aaff !important; cursor: move !important; user-select: none; pointer-events: auto !important; }
             #${DOM_IDS.CLIP_EDIT_HANDLE} { position: fixed; border: 2px dashed #ff4757; background-color: rgba(255, 71, 87, 0.2); cursor: move; z-index: 99998; user-select: none; }
-            .vn-resize-handle { position: absolute; width: 10px; height: 10px; background-color: white; border: 1px solid #333; z-index: 99999; }
-            .vn-resize-handle.top-left { top: -6px; left: -6px; cursor: nwse-resize; } .vn-resize-handle.top { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .vn-resize-handle.top-right { top: -6px; right: -6px; cursor: nesw-resize; } .vn-resize-handle.left { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; } .vn-resize-handle.right { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; } .vn-resize-handle.bottom-left { bottom: -6px; left: -6px; cursor: nesw-resize; } .vn-resize-handle.bottom { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .vn-resize-handle.bottom-right { bottom: -6px; right: -6px; cursor: nwse-resize; }
+            .vn-resize-handle {
+                position: absolute;
+                width: 14px; /* 시각적 크기 살짝 키움 */
+                height: 14px;
+                background-color: white;
+                border: 2px solid #333;
+                border-radius: 50%; /* 원형으로 변경하여 터치 친화적으로 만듬 */
+                z-index: 99999;
+            }
+            /* [추가] 눈에 보이지 않는 실제 터치 영역을 32x32px로 확장 */
+            .vn-resize-handle::before {
+                content: '';
+                position: absolute;
+                left: -9px;
+                top: -9px;
+                width: 32px;
+                height: 32px;
+                background: transparent;
+            }
+            /* [수정] 커진 핸들 크기에 맞게 위치 재조정 */
+            .vn-resize-handle.top-left { top: -8px; left: -8px; cursor: nwse-resize; }
+            .vn-resize-handle.top { top: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+            .vn-resize-handle.top-right { top: -8px; right: -8px; cursor: nesw-resize; }
+            .vn-resize-handle.left { top: 50%; left: -8px; transform: translateY(-50%); cursor: ew-resize; }
+            .vn-resize-handle.right { top: 50%; right: -8px; transform: translateY(-50%); cursor: ew-resize; }
+            .vn-resize-handle.bottom-left { bottom: -8px; left: -8px; cursor: nesw-resize; }
+            .vn-resize-handle.bottom { bottom: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+            .vn-resize-handle.bottom-right { bottom: -8px; right: -8px; cursor: nwse-resize; }
             @keyframes shake-vertical { 0%, 100% { transform: translateY(0); } 10%, 30%, 50%, 70%, 90% { transform: translateY(-4px); } 20%, 40%, 60%, 80% { transform: translateY(4px); } } .vn-anim-shake-vertical { animation: shake-vertical 0.7s cubic-bezier(.36,.07,.19,.97) both; }
             @keyframes shake-horizontal { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); } 20%, 40%, 60%, 80% { transform: translateX(4px); } } .vn-anim-shake-horizontal { animation: shake-horizontal 0.7s cubic-bezier(.36,.07,.19,.97) both; }
             @keyframes flash { from, 50%, to { opacity: 1; } 25%, 75% { opacity: 0.6; } } .vn-anim-flash { animation: flash 0.8s; }
@@ -306,6 +332,13 @@
             e.preventDefault(); e.stopPropagation();
             const event = this.getEventCoords(e);
             this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top, isClipHandle: isClipHandle };
+
+            // [추가] 드래그 시작 시 시각적 피드백
+            el.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
+            el.style.transform = 'scale(1.02)';
+            el.style.boxShadow = '0 0 20px rgba(0, 170, 255, 0.8)';
+            // --- 추가 끝 ---
+
             document.addEventListener('mousemove', this.onDragMove.bind(this));
             document.addEventListener('touchmove', this.onDragMove.bind(this));
             document.addEventListener('mouseup', this.onDragEnd.bind(this));
@@ -314,19 +347,40 @@
         onDragMove(e) {
             if (!this.dragInfo.element) return;
             const event = this.getEventCoords(e);
-            const newLeft = event.clientX - this.dragInfo.offsetX;
-            const newTop = event.clientY - this.dragInfo.offsetY;
-            this.dragInfo.element.style.left = `${newLeft}px`;
-            this.dragInfo.element.style.top = `${newTop}px`;
+
+            let newLeft = event.clientX - this.dragInfo.offsetX;
+            let newTop = event.clientY - this.dragInfo.offsetY;
+
+            // [추가] 화면 가장자리 스냅 기능
+            const snapThreshold = 20; // 20px 이내로 접근 시 스냅
+            const el = this.dragInfo.element;
+            const rect = el.getBoundingClientRect();
+
+            if (newLeft < snapThreshold) newLeft = 0; // 왼쪽 가장자리
+            if (newTop < snapThreshold) newTop = 0; // 위쪽 가장자리
+            if (Math.abs(newLeft + rect.width - window.innerWidth) < snapThreshold) newLeft = window.innerWidth - rect.width; // 오른쪽 가장자리
+            if (Math.abs(newTop + rect.height - window.innerHeight) < snapThreshold) newTop = window.innerHeight - rect.height; // 아래쪽 가장자리
+            // --- 추가 끝 ---
+
+            el.style.left = `${newLeft}px`;
+            el.style.top = `${newTop}px`;
+
             if (!this.dragInfo.isClipHandle) {
-                this.dragInfo.element.style.right = 'auto';
-                this.dragInfo.element.style.bottom = 'auto';
-                this.dragInfo.element.style.transform = 'none';
+                el.style.right = 'auto';
+                el.style.bottom = 'auto';
+                // [수정] 2단계에서 추가한 scale 효과가 드래그 중 유지되도록 아래 줄을 주석 처리하거나 삭제합니다.
+                // el.style.transform = 'none';
             }
         },
         onDragEnd() {
             const draggedEl = this.dragInfo.element;
             if (!draggedEl) return;
+
+            // [추가] 드래그 종료 시 시각적 피드백 제거
+            draggedEl.style.transform = 'scale(1)';
+            draggedEl.style.boxShadow = 'none';
+            setTimeout(() => { draggedEl.style.transition = ''; }, 100); // 애니메이션 후 transition 속성 제거
+            // --- 추가 끝 ---
             if (this.dragInfo.isClipHandle) {
                 const newRect = draggedEl.getBoundingClientRect();
                 SettingsManager.settings.clipRect = { top: newRect.top, left: newRect.left, width: newRect.width, height: newRect.height };
