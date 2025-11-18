@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile_TEST (Landscape)
 // @namespace    http://tampermonkey.net/
-// @version      1.5-mobile
+// @version      1.5.1-mobile
 // @description  모바일 가로 모드에 최적화된 비주얼 노벨 엔진입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
 // @grant        GM_addStyle
 // @run-at       document-idle
+// @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
+// @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // ==/UserScript==
 
 (function() {
