@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.5.5-mobile-final
+// @version      1.5.6-mobile-final
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -197,261 +197,262 @@
     // --- UI 관리자 ---
     const UIManager = {
         elements: {}, activeCharacters: [], dragInfo: {}, resizeInfo: {},
-        // [수정] 터치/마우스 이벤트를 정규화하여 올바른 좌표를 반환하는 헬퍼 함수
-        getEventCoords(e) {
-            if (e.touches && e.touches.length > 0) {
-                return e.touches; // touchstart, touchmove
-            }
-            if (e.changedTouches && e.changedTouches.length > 0) {
-                return e.changedTouches; // touchend
-            }
-            return e; // mousedown, mousemove, mouseup
-        },
-        setup() {
-            GM_addStyle(generateStyles(SettingsManager.settings));
-            const container = document.createElement('div'); container.id = DOM_IDS.CONTAINER;
-            const characterContainerHTML = (SettingsManager.settings.characterMode === 'multi') ? `<div id="${DOM_IDS.CHAR_CONTAINER}"></div>` : `<div id="${DOM_IDS.CHAR_CONTAINER}"><img class="vn-character-cg" id="vn-cg-main"></div>`;
-            container.innerHTML = `<div id="${DOM_IDS.BACKGROUND}"></div><img id="${DOM_IDS.EVENT_CG}" />${characterContainerHTML}<div id="${DOM_IDS.STATUS_WINDOW}"></div><div id="${DOM_IDS.DIALOGUE_BOX}"><div id="${DOM_IDS.CHAR_NAME}"></div><p id="${DOM_IDS.DIALOGUE_TEXT}"></p><div id="${DOM_IDS.BACK_BUTTON}">‹</div></div>`;
-            document.body.appendChild(container);
-            this.elements = { container: document.getElementById(DOM_IDS.CONTAINER), background: document.getElementById(DOM_IDS.BACKGROUND), eventCG: document.getElementById(DOM_IDS.EVENT_CG), charContainer: document.getElementById(DOM_IDS.CHAR_CONTAINER), statusWindow: document.getElementById(DOM_IDS.STATUS_WINDOW), dialogueBox: document.getElementById(DOM_IDS.DIALOGUE_BOX), charName: document.getElementById(DOM_IDS.CHAR_NAME), dialogueText: document.getElementById(DOM_IDS.DIALOGUE_TEXT), backButton: document.getElementById(DOM_IDS.BACK_BUTTON), cgSingle: (SettingsManager.settings.characterMode !== 'multi') ? document.getElementById('vn-cg-main') : null, };
-            this.elements.dialogueBox?.addEventListener('click', (e) => { if (e.target.id !== DOM_IDS.BACK_BUTTON && !e.target.closest(`#${DOM_IDS.BACK_BUTTON}`)) StageManager.next(); });
-            this.elements.backButton?.addEventListener('click', (e) => { e.stopPropagation(); StageManager.previous(); });
-            const controlPanel = document.createElement('div'); controlPanel.className = 'vn-control-panel';
-            controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
-            document.body.appendChild(controlPanel);
 
-            const startButton = document.getElementById(DOM_IDS.START_BUTTON);
-            const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
-            const openSettings = () => SettingsManager.open();
+    // [수정] 터치/마우스 이벤트에서 단일 좌표 객체를 반환하도록 수정
+    getEventCoords(e) {
+        if (e.touches && e.touches.length > 0) {
+            return e.touches[0]; // TouchList가 아닌 첫 번째 Touch 객체를 반환
+        }
+        if (e.changedTouches && e.changedTouches.length > 0) {
+            return e.changedTouches[0]; // touchend의 경우
+        }
+        return e; // 마우스 이벤트는 그대로 반환
+    },
+    setup() {
+        GM_addStyle(generateStyles(SettingsManager.settings));
+        const container = document.createElement('div'); container.id = DOM_IDS.CONTAINER;
+        const characterContainerHTML = (SettingsManager.settings.characterMode === 'multi') ? `<div id="${DOM_IDS.CHAR_CONTAINER}"></div>` : `<div id="${DOM_IDS.CHAR_CONTAINER}"><img class="vn-character-cg" id="vn-cg-main"></div>`;
+        container.innerHTML = `<div id="${DOM_IDS.BACKGROUND}"></div><img id="${DOM_IDS.EVENT_CG}" />${characterContainerHTML}<div id="${DOM_IDS.STATUS_WINDOW}"></div><div id="${DOM_IDS.DIALOGUE_BOX}"><div id="${DOM_IDS.CHAR_NAME}"></div><p id="${DOM_IDS.DIALOGUE_TEXT}"></p><div id="${DOM_IDS.BACK_BUTTON}">‹</div></div>`;
+        document.body.appendChild(container);
+        this.elements = { container: document.getElementById(DOM_IDS.CONTAINER), background: document.getElementById(DOM_IDS.BACKGROUND), eventCG: document.getElementById(DOM_IDS.EVENT_CG), charContainer: document.getElementById(DOM_IDS.CHAR_CONTAINER), statusWindow: document.getElementById(DOM_IDS.STATUS_WINDOW), dialogueBox: document.getElementById(DOM_IDS.DIALOGUE_BOX), charName: document.getElementById(DOM_IDS.CHAR_NAME), dialogueText: document.getElementById(DOM_IDS.DIALOGUE_TEXT), backButton: document.getElementById(DOM_IDS.BACK_BUTTON), cgSingle: (SettingsManager.settings.characterMode !== 'multi') ? document.getElementById('vn-cg-main') : null, };
+        this.elements.dialogueBox?.addEventListener('click', (e) => { if (e.target.id !== DOM_IDS.BACK_BUTTON && !e.target.closest(`#${DOM_IDS.BACK_BUTTON}`)) StageManager.next(); });
+        this.elements.backButton?.addEventListener('click', (e) => { e.stopPropagation(); StageManager.previous(); });
+        const controlPanel = document.createElement('div'); controlPanel.className = 'vn-control-panel';
+        controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
+        document.body.appendChild(controlPanel);
 
-            if (startButton) {
-                startButton.addEventListener('click', toggleVNEngine);
-                startButton.addEventListener('touchstart', (e) => { e.preventDefault(); toggleVNEngine(); });
-            }
-            if (settingsButton) {
-                settingsButton.addEventListener('click', openSettings);
-                settingsButton.addEventListener('touchstart', (e) => { e.preventDefault(); openSettings(); });
-            }
+        const startButton = document.getElementById(DOM_IDS.START_BUTTON);
+        const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
+        const openSettings = () => SettingsManager.open();
 
-            SettingsManager.createModal();
-            console.log("VN Engine: 비주얼 노벨 UI 및 제어판이 준비되었습니다.");
-        },
-        async updateCharacter(url, characterId = null) { if (SettingsManager.settings.characterMode === 'multi') { await this._updateMultiCharacter(url, characterId); } else { this.updateSingleCharacter(url); } },
-        async _updateMultiCharacter(url, characterIdForOff = null) {
-            const charContainer = this.elements.charContainer; if (!charContainer) return;
-            if (url === 'off') {
-                const charId = characterIdForOff; if (!charId) return;
-                const indexToRemove = this.activeCharacters.findIndex(char => char.id === charId);
-                if (indexToRemove > -1) { const charToRemove = this.activeCharacters[indexToRemove]; if (charToRemove.element) { charToRemove.element.style.opacity = 0; setTimeout(() => charToRemove.element.remove(), 400); } if (this.elements.eventCG.dataset.ownerId === charId) this.hideEventCG(charId); this.activeCharacters.splice(indexToRemove, 1); this._updateCharacterOrder(); }
-                return;
-            }
-            const charInfo = this.parseCharacterInfoFromUrl(url); if (!charInfo) return;
-            const aspectRatio = await this.getImageAspectRatio(url).catch(() => 1); const newMode = aspectRatio > 1.2 ? 'event' : 'standing';
-            const existingChar = this.activeCharacters.find(char => char.id === charInfo.id);
-            if (existingChar) {
-                const oldMode = existingChar.mode; existingChar.url = url; existingChar.mode = newMode;
-                if (newMode === 'event') { this.showEventCG(url, charInfo.id); if (existingChar.element) existingChar.element.style.display = 'none'; }
-                else { if (oldMode === 'event') this.hideEventCG(charInfo.id); if (!existingChar.element) { existingChar.element = this._createCharacterElement(url); } existingChar.element.style.display = 'flex'; const img = existingChar.element.querySelector('.vn-character-cg'); if (img.src !== url) { img.src = url; this.applyAnimation(img, url); } }
-            } else {
-                const newChar = { id: charInfo.id, url, mode: newMode, element: null };
-                if (newMode === 'standing') { newChar.element = this._createCharacterElement(url, false); this.applyAnimation(newChar.element.querySelector('.vn-character-cg'), url); }
-                else { this.showEventCG(url, charInfo.id); }
-                this.activeCharacters.push(newChar); this._updateCharacterOrder();
-            }
-        },
-        _createCharacterElement(url, shouldAppend = false) {
-            const slot = document.createElement('div'); slot.className = 'vn-character-slot'; slot.style.opacity = 0; slot.style.transform = 'translateY(20px)';
-            const img = document.createElement('img'); img.className = 'vn-character-cg'; img.src = url; slot.appendChild(img);
-            if (shouldAppend) { this.elements.charContainer.appendChild(slot); setTimeout(() => { slot.style.opacity = 1; slot.style.transform = 'translateY(0)'; }, 50); }
-            return slot;
-        },
-        _updateCharacterOrder() {
-            const standingChars = this.activeCharacters.filter(c => c.mode === 'standing' && c.element);
-            const container = this.elements.charContainer;
-            standingChars.forEach(char => {
-                container.appendChild(char.element);
-                if (parseFloat(char.element.style.opacity) === 0) { setTimeout(() => { char.element.style.opacity = 1; char.element.style.transform = 'translateY(0)'; }, 50); }
+        if (startButton) {
+            startButton.addEventListener('click', toggleVNEngine);
+            startButton.addEventListener('touchstart', (e) => { e.preventDefault(); toggleVNEngine(); });
+        }
+        if (settingsButton) {
+            settingsButton.addEventListener('click', openSettings);
+            settingsButton.addEventListener('touchstart', (e) => { e.preventDefault(); openSettings(); });
+        }
+
+        SettingsManager.createModal();
+        console.log("VN Engine: 비주얼 노벨 UI 및 제어판이 준비되었습니다.");
+    },
+    async updateCharacter(url, characterId = null) { if (SettingsManager.settings.characterMode === 'multi') { await this._updateMultiCharacter(url, characterId); } else { this.updateSingleCharacter(url); } },
+    async _updateMultiCharacter(url, characterIdForOff = null) {
+        const charContainer = this.elements.charContainer; if (!charContainer) return;
+        if (url === 'off') {
+            const charId = characterIdForOff; if (!charId) return;
+            const indexToRemove = this.activeCharacters.findIndex(char => char.id === charId);
+            if (indexToRemove > -1) { const charToRemove = this.activeCharacters[indexToRemove]; if (charToRemove.element) { charToRemove.element.style.opacity = 0; setTimeout(() => charToRemove.element.remove(), 400); } if (this.elements.eventCG.dataset.ownerId === charId) this.hideEventCG(charId); this.activeCharacters.splice(indexToRemove, 1); this._updateCharacterOrder(); }
+            return;
+        }
+        const charInfo = this.parseCharacterInfoFromUrl(url); if (!charInfo) return;
+        const aspectRatio = await this.getImageAspectRatio(url).catch(() => 1); const newMode = aspectRatio > 1.2 ? 'event' : 'standing';
+        const existingChar = this.activeCharacters.find(char => char.id === charInfo.id);
+        if (existingChar) {
+            const oldMode = existingChar.mode; existingChar.url = url; existingChar.mode = newMode;
+            if (newMode === 'event') { this.showEventCG(url, charInfo.id); if (existingChar.element) existingChar.element.style.display = 'none'; }
+            else { if (oldMode === 'event') this.hideEventCG(charInfo.id); if (!existingChar.element) { existingChar.element = this._createCharacterElement(url); } existingChar.element.style.display = 'flex'; const img = existingChar.element.querySelector('.vn-character-cg'); if (img.src !== url) { img.src = url; this.applyAnimation(img, url); } }
+        } else {
+            const newChar = { id: charInfo.id, url, mode: newMode, element: null };
+            if (newMode === 'standing') { newChar.element = this._createCharacterElement(url, false); this.applyAnimation(newChar.element.querySelector('.vn-character-cg'), url); }
+            else { this.showEventCG(url, charInfo.id); }
+            this.activeCharacters.push(newChar); this._updateCharacterOrder();
+        }
+    },
+    _createCharacterElement(url, shouldAppend = false) {
+        const slot = document.createElement('div'); slot.className = 'vn-character-slot'; slot.style.opacity = 0; slot.style.transform = 'translateY(20px)';
+        const img = document.createElement('img'); img.className = 'vn-character-cg'; img.src = url; slot.appendChild(img);
+        if (shouldAppend) { this.elements.charContainer.appendChild(slot); setTimeout(() => { slot.style.opacity = 1; slot.style.transform = 'translateY(0)'; }, 50); }
+        return slot;
+    },
+    _updateCharacterOrder() {
+        const standingChars = this.activeCharacters.filter(c => c.mode === 'standing' && c.element);
+        const container = this.elements.charContainer;
+        standingChars.forEach(char => {
+            container.appendChild(char.element);
+            if (parseFloat(char.element.style.opacity) === 0) { setTimeout(() => { char.element.style.opacity = 1; char.element.style.transform = 'translateY(0)'; }, 50); }
+        });
+    },
+    applyAnimation(imgElement, url) { const filename = url.substring(url.lastIndexOf('/') + 1); const matchingRule = SettingsManager.settings.customAnimations.find(rule => filename.includes(rule.trigger)); if (matchingRule) { const animClass = `vn-anim-${matchingRule.animation}`; imgElement.classList.add(animClass); imgElement.addEventListener('animationend', () => { imgElement.classList.remove(animClass); }, { once: true }); } },
+    getImageAspectRatio(url) { return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img.width / img.height); img.onerror = reject; img.src = url; }); },
+    showEventCG(url, ownerId) { if (this.elements.eventCG) { this.elements.eventCG.dataset.ownerId = ownerId; this.elements.eventCG.src = url; this.elements.eventCG.classList.add('visible'); } },
+    hideEventCG(ownerId) { if (this.elements.eventCG && this.elements.eventCG.dataset.ownerId === ownerId) { this.elements.eventCG.classList.remove('visible'); this.elements.eventCG.dataset.ownerId = ''; setTimeout(() => { if (!this.elements.eventCG.classList.contains('visible')) this.elements.eventCG.src = ''; }, 500); } },
+    clearAllMultiCharacters() { if (this.elements.eventCG.classList.contains('visible')) { this.hideEventCG(this.elements.eventCG.dataset.ownerId); } this.activeCharacters.forEach(char => { if (char.element) char.element.remove(); }); this.activeCharacters = []; },
+    toggleUiEditMode(enable) {
+        const targets = [this.elements.dialogueBox, this.elements.statusWindow, this.elements.charContainer];
+        const editButton = document.getElementById('vn-edit-ui-button');
+        if (!editButton) return;
+        if (enable) {
+            this.showAll();
+            editButton.textContent = '편집 완료';
+            editButton.onclick = () => this.toggleUiEditMode(false);
+            targets.forEach(el => {
+                if(el) {
+                    el.classList.add('vn-ui-draggable');
+                    el.addEventListener('mousedown', (e) => this.onDragStart(e, el));
+                    el.addEventListener('touchstart', (e) => this.onDragStart(e, el));
+                }
             });
-        },
-        applyAnimation(imgElement, url) { const filename = url.substring(url.lastIndexOf('/') + 1); const matchingRule = SettingsManager.settings.customAnimations.find(rule => filename.includes(rule.trigger)); if (matchingRule) { const animClass = `vn-anim-${matchingRule.animation}`; imgElement.classList.add(animClass); imgElement.addEventListener('animationend', () => { imgElement.classList.remove(animClass); }, { once: true }); } },
-        getImageAspectRatio(url) { return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img.width / img.height); img.onerror = reject; img.src = url; }); },
-        showEventCG(url, ownerId) { if (this.elements.eventCG) { this.elements.eventCG.dataset.ownerId = ownerId; this.elements.eventCG.src = url; this.elements.eventCG.classList.add('visible'); } },
-        hideEventCG(ownerId) { if (this.elements.eventCG && this.elements.eventCG.dataset.ownerId === ownerId) { this.elements.eventCG.classList.remove('visible'); this.elements.eventCG.dataset.ownerId = ''; setTimeout(() => { if (!this.elements.eventCG.classList.contains('visible')) this.elements.eventCG.src = ''; }, 500); } },
-        clearAllMultiCharacters() { if (this.elements.eventCG.classList.contains('visible')) { this.hideEventCG(this.elements.eventCG.dataset.ownerId); } this.activeCharacters.forEach(char => { if (char.element) char.element.remove(); }); this.activeCharacters = []; },
-        toggleUiEditMode(enable) {
-            const targets = [this.elements.dialogueBox, this.elements.statusWindow, this.elements.charContainer];
-            const editButton = document.getElementById('vn-edit-ui-button');
-            if (!editButton) return;
-            if (enable) {
-                this.showAll();
-                editButton.textContent = '편집 완료';
-                editButton.onclick = () => this.toggleUiEditMode(false);
-                targets.forEach(el => {
-                    if(el) {
-                        el.classList.add('vn-ui-draggable');
-                        el.addEventListener('mousedown', (e) => this.onDragStart(e, el));
-                        el.addEventListener('touchstart', (e) => this.onDragStart(e, el));
-                    }
-                });
-                this.createClipEditHandle();
-            } else {
-                editButton.textContent = '편집 시작';
-                editButton.onclick = () => { SettingsManager.close(); this.toggleUiEditMode(true); };
-                targets.forEach(el => {
-                    if(el) {
-                        el.classList.remove('vn-ui-draggable');
-                        el.removeEventListener('mousedown', (e) => this.onDragStart(e, el));
-                        el.removeEventListener('touchstart', (e) => this.onDragStart(e, el));
-                    }
-                });
-                this.removeClipEditHandle();
-                if (!isEngineActive) { this.hideAll(); }
-            }
-        },
-        createClipEditHandle() {
-            if (document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE)) return;
-            const handle = document.createElement('div');
-            handle.id = DOM_IDS.CLIP_EDIT_HANDLE;
-            document.body.appendChild(handle);
-            let rect = SettingsManager.settings.clipRect;
-            if (!rect) { const defaultWidth = 600, defaultHeight = 120; rect = { top: window.innerHeight - defaultHeight - 50, left: (window.innerWidth - defaultWidth) / 2, width: defaultWidth, height: defaultHeight }; }
-            handle.style.top = `${rect.top}px`; handle.style.left = `${rect.left}px`; handle.style.width = `${rect.width}px`; handle.style.height = `${rect.height}px`;
-            handle.addEventListener('mousedown', (e) => this.onDragStart(e, handle, true));
-            handle.addEventListener('touchstart', (e) => this.onDragStart(e, handle, true));
-            const handleTypes = ['top-left', 'top', 'top-right', 'left', 'right', 'bottom-left', 'bottom', 'bottom-right'];
-            handleTypes.forEach(type => {
-                const resizeHandle = document.createElement('div');
-                resizeHandle.className = `vn-resize-handle ${type}`;
-                handle.appendChild(resizeHandle);
-                resizeHandle.addEventListener('mousedown', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
-                resizeHandle.addEventListener('touchstart', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
+            this.createClipEditHandle();
+        } else {
+            editButton.textContent = '편집 시작';
+            editButton.onclick = () => { SettingsManager.close(); this.toggleUiEditMode(true); };
+            targets.forEach(el => {
+                if(el) {
+                    el.classList.remove('vn-ui-draggable');
+                    el.removeEventListener('mousedown', (e) => this.onDragStart(e, el));
+                    el.removeEventListener('touchstart', (e) => this.onDragStart(e, el));
+                }
             });
-        },
-        removeClipEditHandle() { const handle = document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE); if (handle) handle.remove(); },
-        onDragStart(e, el, isClipHandle = false) {
-            e.preventDefault(); e.stopPropagation();
-            const event = this.getEventCoords(e);
-            this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top, isClipHandle: isClipHandle };
+            this.removeClipEditHandle();
+            if (!isEngineActive) { this.hideAll(); }
+        }
+    },
+    createClipEditHandle() {
+        if (document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE)) return;
+        const handle = document.createElement('div');
+        handle.id = DOM_IDS.CLIP_EDIT_HANDLE;
+        document.body.appendChild(handle);
+        let rect = SettingsManager.settings.clipRect;
+        if (!rect) { const defaultWidth = 600, defaultHeight = 120; rect = { top: window.innerHeight - defaultHeight - 50, left: (window.innerWidth - defaultWidth) / 2, width: defaultWidth, height: defaultHeight }; }
+        handle.style.top = `${rect.top}px`; handle.style.left = `${rect.left}px`; handle.style.width = `${rect.width}px`; handle.style.height = `${rect.height}px`;
+        handle.addEventListener('mousedown', (e) => this.onDragStart(e, handle, true));
+        handle.addEventListener('touchstart', (e) => this.onDragStart(e, handle, true));
+        const handleTypes = ['top-left', 'top', 'top-right', 'left', 'right', 'bottom-left', 'bottom', 'bottom-right'];
+        handleTypes.forEach(type => {
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = `vn-resize-handle ${type}`;
+            handle.appendChild(resizeHandle);
+            resizeHandle.addEventListener('mousedown', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
+            resizeHandle.addEventListener('touchstart', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
+        });
+    },
+    removeClipEditHandle() { const handle = document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE); if (handle) handle.remove(); },
+    onDragStart(e, el, isClipHandle = false) {
+        e.preventDefault(); e.stopPropagation();
+        const event = this.getEventCoords(e);
+        this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top, isClipHandle: isClipHandle };
 
-            // [추가] 드래그 시작 시 시각적 피드백
-            el.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
-            el.style.transform = 'scale(1.02)';
-            el.style.boxShadow = '0 0 20px rgba(0, 170, 255, 0.8)';
-            // --- 추가 끝 ---
+        // [개선] 드래그 시작 시 시각적 피드백
+        el.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
+        el.style.transform = 'scale(1.02)';
+        el.style.boxShadow = '0 0 20px rgba(0, 170, 255, 0.8)';
 
-            document.addEventListener('mousemove', this.onDragMove.bind(this));
-            document.addEventListener('touchmove', this.onDragMove.bind(this));
-            document.addEventListener('mouseup', this.onDragEnd.bind(this));
-            document.addEventListener('touchend', this.onDragEnd.bind(this));
-        },
-        onDragMove(e) {
-            if (!this.dragInfo.element) return;
-            const event = this.getEventCoords(e);
+        document.addEventListener('mousemove', this.onDragMove.bind(this));
+        document.addEventListener('touchmove', this.onDragMove.bind(this), { passive: false }); // 스크롤 방지
+        document.addEventListener('mouseup', this.onDragEnd.bind(this));
+        document.addEventListener('touchend', this.onDragEnd.bind(this));
+    },
+    onDragMove(e) {
+        if (e.cancelable) e.preventDefault(); // 스크롤 방지
+        if (!this.dragInfo.element) return;
+        const event = this.getEventCoords(e);
+        if (!event) return; // 이벤트 좌표가 없으면 중단
 
-            let newLeft = event.clientX - this.dragInfo.offsetX;
-            let newTop = event.clientY - this.dragInfo.offsetY;
+        let newLeft = event.clientX - this.dragInfo.offsetX;
+        let newTop = event.clientY - this.dragInfo.offsetY;
 
-            // [추가] 화면 가장자리 스냅 기능
-            const snapThreshold = 20; // 20px 이내로 접근 시 스냅
-            const el = this.dragInfo.element;
-            const rect = el.getBoundingClientRect();
+        // [개선] 화면 가장자리 스냅 기능
+        const snapThreshold = 20;
+        const el = this.dragInfo.element;
+        const rect = el.getBoundingClientRect();
+        if (newLeft < snapThreshold) newLeft = 0;
+        if (newTop < snapThreshold) newTop = 0;
+        if (Math.abs(newLeft + rect.width - window.innerWidth) < snapThreshold) newLeft = window.innerWidth - rect.width;
+        if (Math.abs(newTop + rect.height - window.innerHeight) < snapThreshold) newTop = window.innerHeight - rect.height;
 
-            if (newLeft < snapThreshold) newLeft = 0; // 왼쪽 가장자리
-            if (newTop < snapThreshold) newTop = 0; // 위쪽 가장자리
-            if (Math.abs(newLeft + rect.width - window.innerWidth) < snapThreshold) newLeft = window.innerWidth - rect.width; // 오른쪽 가장자리
-            if (Math.abs(newTop + rect.height - window.innerHeight) < snapThreshold) newTop = window.innerHeight - rect.height; // 아래쪽 가장자리
-            // --- 추가 끝 ---
+        el.style.left = `${newLeft}px`;
+        el.style.top = `${newTop}px`;
 
-            el.style.left = `${newLeft}px`;
-            el.style.top = `${newTop}px`;
+        if (!this.dragInfo.isClipHandle) {
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+        }
+    },
+    onDragEnd() {
+        const draggedEl = this.dragInfo.element;
+        if (!draggedEl) return;
 
-            if (!this.dragInfo.isClipHandle) {
-                el.style.right = 'auto';
-                el.style.bottom = 'auto';
-                // [수정] 2단계에서 추가한 scale 효과가 드래그 중 유지되도록 아래 줄을 주석 처리하거나 삭제합니다.
-                // el.style.transform = 'none';
-            }
-        },
-        onDragEnd() {
-            const draggedEl = this.dragInfo.element;
-            if (!draggedEl) return;
+        // [개선] 드래그 종료 시 시각적 피드백 제거
+        draggedEl.style.transform = 'scale(1)';
+        draggedEl.style.boxShadow = 'none';
+        setTimeout(() => { draggedEl.style.transition = ''; }, 100);
 
-            // [추가] 드래그 종료 시 시각적 피드백 제거
-            draggedEl.style.transform = 'scale(1)';
-            draggedEl.style.boxShadow = 'none';
-            setTimeout(() => { draggedEl.style.transition = ''; }, 100); // 애니메이션 후 transition 속성 제거
-            // --- 추가 끝 ---
-            if (this.dragInfo.isClipHandle) {
-                const newRect = draggedEl.getBoundingClientRect();
-                SettingsManager.settings.clipRect = { top: newRect.top, left: newRect.left, width: newRect.width, height: newRect.height };
-                applyContainerClipping();
-            } else {
-                const newPos = { top: `${draggedEl.style.top}`, left: `${draggedEl.style.left}`, transform: 'none' };
-                if (draggedEl.id === DOM_IDS.DIALOGUE_BOX) SettingsManager.settings.dialogueBoxPos = newPos;
-                else if (draggedEl.id === DOM_IDS.STATUS_WINDOW) SettingsManager.settings.statusWindowPos = newPos;
-                else if (draggedEl.id === DOM_IDS.CHAR_CONTAINER) SettingsManager.settings.characterContainerPos = newPos;
-            }
+        if (this.dragInfo.isClipHandle) {
+            const newRect = draggedEl.getBoundingClientRect();
+            SettingsManager.settings.clipRect = { top: newRect.top, left: newRect.left, width: newRect.width, height: newRect.height };
+            applyContainerClipping();
+        } else {
+            const newPos = { top: `${draggedEl.style.top}`, left: `${draggedEl.style.left}`, transform: 'none' };
+            if (draggedEl.id === DOM_IDS.DIALOGUE_BOX) SettingsManager.settings.dialogueBoxPos = newPos;
+            else if (draggedEl.id === DOM_IDS.STATUS_WINDOW) SettingsManager.settings.statusWindowPos = newPos;
+            else if (draggedEl.id === DOM_IDS.CHAR_CONTAINER) SettingsManager.settings.characterContainerPos = newPos;
+        }
+        SettingsManager.save();
+        this.dragInfo = {};
+        document.removeEventListener('mousemove', this.onDragMove.bind(this));
+        document.removeEventListener('touchmove', this.onDragMove.bind(this));
+        document.removeEventListener('mouseup', this.onDragEnd.bind(this));
+        document.removeEventListener('touchend', this.onDragEnd.bind(this));
+    },
+    onResizeStart(e, handleType) {
+        e.preventDefault(); e.stopPropagation();
+        const event = this.getEventCoords(e);
+        this.resizeInfo = { element: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE), handleType: handleType, initialRect: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE).getBoundingClientRect(), initialMouse: { x: event.clientX, y: event.clientY } };
+        document.addEventListener('mousemove', this.onResizeMove.bind(this));
+        document.addEventListener('touchmove', this.onResizeMove.bind(this), { passive: false });
+        document.addEventListener('mouseup', this.onResizeEnd.bind(this));
+        document.addEventListener('touchend', this.onResizeEnd.bind(this));
+    },
+    onResizeMove(e) {
+        if (e.cancelable) e.preventDefault();
+        const { element, handleType, initialRect, initialMouse } = this.resizeInfo;
+        if (!element) return;
+        const event = this.getEventCoords(e);
+        if (!event) return;
+
+        const deltaX = event.clientX - initialMouse.x;
+        const deltaY = event.clientY - initialMouse.y;
+        const minSize = 20;
+        let { top, left, width, height } = initialRect;
+        if (handleType.includes('top')) { height -= deltaY; top += deltaY; }
+        if (handleType.includes('bottom')) { height += deltaY; }
+        if (handleType.includes('left')) { width -= deltaX; left += deltaX; }
+        if (handleType.includes('right')) { width += deltaX; }
+        if (width < minSize) { if (handleType.includes('left')) left = initialRect.right - minSize; width = minSize; }
+        if (height < minSize) { if (handleType.includes('top')) top = initialRect.bottom - minSize; height = minSize; }
+        element.style.top = `${top}px`;
+        element.style.left = `${left}px`;
+        element.style.width = `${width}px`;
+        element.style.height = `${height}px`;
+    },
+    onResizeEnd() {
+        const { element } = this.resizeInfo;
+        if (element) {
+            const finalRect = element.getBoundingClientRect();
+            SettingsManager.settings.clipRect = { top: finalRect.top, left: finalRect.left, width: finalRect.width, height: finalRect.height };
             SettingsManager.save();
-            this.dragInfo = {};
-            document.removeEventListener('mousemove', this.onDragMove.bind(this));
-            document.removeEventListener('touchmove', this.onDragMove.bind(this));
-            document.removeEventListener('mouseup', this.onDragEnd.bind(this));
-            document.removeEventListener('touchend', this.onDragEnd.bind(this));
-        },
-        onResizeStart(e, handleType) {
-            e.preventDefault(); e.stopPropagation();
-            const event = this.getEventCoords(e);
-            this.resizeInfo = { element: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE), handleType: handleType, initialRect: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE).getBoundingClientRect(), initialMouse: { x: event.clientX, y: event.clientY } };
-            document.addEventListener('mousemove', this.onResizeMove.bind(this));
-            document.addEventListener('touchmove', this.onResizeMove.bind(this));
-            document.addEventListener('mouseup', this.onResizeEnd.bind(this));
-            document.addEventListener('touchend', this.onResizeEnd.bind(this));
-        },
-        onResizeMove(e) {
-            const { element, handleType, initialRect, initialMouse } = this.resizeInfo;
-            if (!element) return;
-            const event = this.getEventCoords(e);
-            const deltaX = event.clientX - initialMouse.x;
-            const deltaY = event.clientY - initialMouse.y;
-            const minSize = 20;
-            let { top, left, width, height } = initialRect;
-            if (handleType.includes('top')) { height -= deltaY; top += deltaY; }
-            if (handleType.includes('bottom')) { height += deltaY; }
-            if (handleType.includes('left')) { width -= deltaX; left += deltaX; }
-            if (handleType.includes('right')) { width += deltaX; }
-            if (width < minSize) { if (handleType.includes('left')) left = initialRect.right - minSize; width = minSize; }
-            if (height < minSize) { if (handleType.includes('top')) top = initialRect.bottom - minSize; height = minSize; }
-            element.style.top = `${top}px`;
-            element.style.left = `${left}px`;
-            element.style.width = `${width}px`;
-            element.style.height = `${height}px`;
-        },
-        onResizeEnd() {
-            const { element } = this.resizeInfo;
-            if (element) {
-                const finalRect = element.getBoundingClientRect();
-                SettingsManager.settings.clipRect = { top: finalRect.top, left: finalRect.left, width: finalRect.width, height: finalRect.height };
-                SettingsManager.save();
-                applyContainerClipping();
-            }
-            this.resizeInfo = {};
-            document.removeEventListener('mousemove', this.onResizeMove.bind(this));
-            document.removeEventListener('touchmove', this.onResizeMove.bind(this));
-            document.removeEventListener('mouseup', this.onResizeEnd.bind(this));
-            document.removeEventListener('touchend', this.onResizeEnd.bind(this));
-        },
-        showAll() { this.elements.container?.classList.add('visible'); },
-        hideAll() { this.elements.container?.classList.remove('visible'); if (SettingsManager.settings.characterMode === 'multi') { this.clearAllMultiCharacters(); } else { this.updateSingleCharacter('off'); } },
-        showBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'block'; },
-        hideBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'none'; },
-        parseCharacterInfoFromUrl(url) { if (!url || url.toLowerCase() === 'off') return null; const filename = url.substring(url.lastIndexOf('/') + 1).split('.'); const match = filename.match(/^([a-zA-Z_]+[a-zA-Z])([0-9_].*)?$/) || filename.match(/^([a-zA-Z]+)([0-9_].*)?$/); if (match && match) { return { id: match, fullId: filename }; } return { id: filename, fullId: filename }; },
-        updateSingleCharacter(url) { const img = this.elements.cgSingle; if (!img) return; if (url.toLowerCase() === 'off') { img.classList.remove('visible'); setTimeout(() => { if (!img.classList.contains('visible')) img.src = ''; }, 300); } else { if (img.src !== url) { img.src = url; } if (!img.classList.contains('visible')) { img.classList.add('visible'); } } },
-        applyCustomBackground() { const { characterMode, customBackgroundUrl } = SettingsManager.settings; if ((characterMode === 'single' || characterMode === 'internalImage') && customBackgroundUrl) this.updateBackgroundImage(customBackgroundUrl); },
-        updateBackgroundImage(url) { if(this.elements.background && this.elements.background.style.backgroundImage !== `url("${url}")`) { this.elements.background.style.backgroundImage = `url("${url}")`; } },
-        updateStatusWindow(text) { if(this.elements.statusWindow) this.elements.statusWindow.textContent = text; },
-        updateDialogueBox(character, text, isAction, typeCallback) { const { charName, dialogueText } = this.elements; if (!charName || !dialogueText) return; if (character) { charName.textContent = character; charName.style.display = 'inline-block'; } else { charName.style.display = 'none'; } dialogueText.className = isAction ? 'action-text' : ''; typeCallback(dialogueText, text); },
-        getDialogueTextElement() { return this.elements.dialogueText; }
-    };
+            applyContainerClipping();
+        }
+        this.resizeInfo = {};
+        document.removeEventListener('mousemove', this.onResizeMove.bind(this));
+        document.removeEventListener('touchmove', this.onResizeMove.bind(this));
+        document.removeEventListener('mouseup', this.onResizeEnd.bind(this));
+        document.removeEventListener('touchend', this.onResizeEnd.bind(this));
+    },
+    showAll() { this.elements.container?.classList.add('visible'); },
+    hideAll() { this.elements.container?.classList.remove('visible'); if (SettingsManager.settings.characterMode === 'multi') { this.clearAllMultiCharacters(); } else { this.updateSingleCharacter('off'); } },
+    showBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'block'; },
+    hideBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'none'; },
+    parseCharacterInfoFromUrl(url) { if (!url || url.toLowerCase() === 'off') return null; const filename = url.substring(url.lastIndexOf('/') + 1).split('.')[0]; const match = filename.match(/^([a-zA-Z_]+[a-zA-Z])([0-9_].*)?$/); if (match) { return { id: match[1], fullId: filename }; } return { id: filename, fullId: filename }; },
+    updateSingleCharacter(url) { const img = this.elements.cgSingle; if (!img) return; if (url.toLowerCase() === 'off') { img.classList.remove('visible'); setTimeout(() => { if (!img.classList.contains('visible')) img.src = ''; }, 300); } else { if (img.src !== url) { img.src = url; } if (!img.classList.contains('visible')) { img.classList.add('visible'); } } },
+    applyCustomBackground() { const { characterMode, customBackgroundUrl } = SettingsManager.settings; if ((characterMode === 'single' || characterMode === 'internalImage') && customBackgroundUrl) this.updateBackgroundImage(customBackgroundUrl); },
+    updateBackgroundImage(url) { if(this.elements.background && this.elements.background.style.backgroundImage !== `url("${url}")`) { this.elements.background.style.backgroundImage = `url("${url}")`; } },
+    updateStatusWindow(text) { if(this.elements.statusWindow) this.elements.statusWindow.textContent = text; },
+    updateDialogueBox(character, text, isAction, typeCallback) { const { charName, dialogueText } = this.elements; if (!charName || !dialogueText) return; if (character) { charName.textContent = character; charName.style.display = 'inline-block'; } else { charName.style.display = 'none'; } dialogueText.className = isAction ? 'action-text' : ''; typeCallback(dialogueText, text); },
+    getDialogueTextElement() { return this.elements.dialogueText; }
+};
 
     // --- 데이터 패쳐 및 전역 로직 --- (변경 없음)
     class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } } function extractCookie(key) { const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`)); return e ? decodeURIComponent(e) : null; } async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } } class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
