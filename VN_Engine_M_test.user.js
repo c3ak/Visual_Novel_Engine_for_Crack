@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Visual Novel Engine V1.5_mobile_TEST (Landscape)
+// @name         Visual Novel Engine V1.5_mobile (Landscape-Fix)
 // @namespace    http://tampermonkey.net/
-// @version      1.5.2-mobile
-// @description  모바일 가로 모드에 최적화된 비주얼 노벨 엔진입니다.
+// @version      1.5.3-mobile-fix
+// @description  모바일 가로 모드 및 버튼 터치 문제를 수정한 비주얼 노벨 엔진입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
 // @grant        GM_addStyle
@@ -70,12 +70,12 @@
         close() { document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'none'; },
     };
 
-    // --- 스타일 생성 ---
+    // --- 스타일 생성 --- (변경 없음)
     function generateStyles(settings) {
         const posToCss = (posObj) => Object.entries(posObj).map(([key, value]) => `${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}: ${value};`).join(' ');
         let characterStyles = '';
         if (settings.characterMode === 'multi') {
-            characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 90vh; /* [모바일 수정] vh를 약간 줄여 하단 공간 확보 */ display: flex; justify-content: center; align-items: flex-end; padding: 0 2%; pointer-events: none; z-index: 2; gap: 2%; } .vn-character-slot { flex: 1 1 0; max-width: 33%; height: 100%; display: flex; justify-content: center; align-items: flex-end; transition: opacity 0.4s, transform 0.4s; } .vn-character-cg { max-width: 95%; max-height: 100%; object-fit: contain; }`;
+            characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 90vh; display: flex; justify-content: center; align-items: flex-end; padding: 0 2%; pointer-events: none; z-index: 2; gap: 2%; } .vn-character-slot { flex: 1 1 0; max-width: 33%; height: 100%; display: flex; justify-content: center; align-items: flex-end; transition: opacity 0.4s, transform 0.4s; } .vn-character-cg { max-width: 95%; max-height: 100%; object-fit: contain; }`;
         } else {
              characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 100%; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; z-index: 2; } .vn-character-cg { max-width: 40%; max-height: 95%; object-fit: contain; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; opacity: 0; transform: translateY(20px); } .vn-character-cg.visible { opacity: 1; transform: translateY(0); }`;
         }
@@ -108,36 +108,13 @@
             @keyframes flash { from, 50%, to { opacity: 1; } 25%, 75% { opacity: 0.6; } } .vn-anim-flash { animation: flash 0.8s; }
             @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-15px); } 60% { transform: translateY(-8px); } } .vn-anim-bounce { animation: bounce 1s; }
             @keyframes vibrate { 0% { transform: translate(0); } 20% { transform: translate(-1px, 1px); } 40% { transform: translate(-1px, -1px); } 60% { transform: translate(1px, 1px); } 80% { transform: translate(1px, -1px); } 100% { transform: translate(0); } } .vn-anim-vibrate { animation: vibrate 0.2s linear infinite; animation-iteration-count: 3; }
-
-            /* --- [모바일 수정] 모바일 가로 모드용 미디어 쿼리 --- */
             @media (orientation: landscape) and (max-height: 600px) {
-                #${DOM_IDS.DIALOGUE_BOX} {
-                    width: 95%;
-                    padding: 15px 20px;
-                    bottom: 20px !important; /* 기본 위치 강제 */
-                }
-                #${DOM_IDS.DIALOGUE_TEXT} {
-                    font-size: 1.25em;
-                    min-height: 50px;
-                }
-                #${DOM_IDS.CHAR_NAME} {
-                    font-size: 1.1em;
-                    padding: 4px 12px;
-                    left: 25px;
-                }
-                .vn-control-panel {
-                    left: 15px;
-                    bottom: 15px;
-                }
-                .vn-control-button {
-                    padding: 12px 18px; /* 터치 영역 확대 */
-                    font-size: 16px;
-                }
-                .vn-modal-content {
-                    width: 95%;
-                    margin: 2% auto;
-                    max-height: 95vh;
-                }
+                #${DOM_IDS.DIALOGUE_BOX} { width: 95%; padding: 15px 20px; bottom: 20px !important; }
+                #${DOM_IDS.DIALOGUE_TEXT} { font-size: 1.25em; min-height: 50px; }
+                #${DOM_IDS.CHAR_NAME} { font-size: 1.1em; padding: 4px 12px; left: 25px; }
+                .vn-control-panel { left: 15px; bottom: 15px; }
+                .vn-control-button { padding: 12px 18px; font-size: 16px; }
+                .vn-modal-content { width: 95%; margin: 2% auto; max-height: 95vh; }
             }
         `;
     }
@@ -145,12 +122,9 @@
     // --- 연출 관리자 --- (변경 없음)
     const StageManager = {
         cueSheet: [], currentIndex: -1, firstTextCueIndex: -1, isTyping: false, typingTimer: null, isVisible: false, isFinished: true,
-
         start(rawText) {
             UIManager.hideBackButton();
             let parsedCues = this.parseCueSheet(rawText);
-
-            // --- [상책] 상황인지형 자동 캐릭터 정리 로직 ---
             if (SettingsManager.settings.characterMode === 'multi') {
                 const hasCharacterUpdate = parsedCues.some(cue => cue.type === 'character_update' && cue.url !== 'off');
                 if (hasCharacterUpdate) {
@@ -169,8 +143,6 @@
                 }
             }
             this.cueSheet = parsedCues;
-            // --- 로직 끝 ---
-
             this.firstTextCueIndex = this.cueSheet.findIndex(c => c.type === 'dialogue' || c.type === 'action');
             if (this.cueSheet.length === 0) { this.isFinished = true; return; }
             UIManager.showAll(); UIManager.applyCustomBackground(); const bgCue = this.cueSheet.find(c => c.type === 'background_image'); if (bgCue) UIManager.updateBackgroundImage(bgCue.url);
@@ -211,27 +183,19 @@
             const controlPanel = document.createElement('div'); controlPanel.className = 'vn-control-panel';
             controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
             document.body.appendChild(controlPanel);
+
+            // [수정] 'click'과 'touchstart' 이벤트를 모두 등록하여 호환성 확보
             const startButton = document.getElementById(DOM_IDS.START_BUTTON);
-            if (startButton) {
-                const handleToggle = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation(); // 이벤트가 다른 곳으로 퍼지는 것을 막습니다.
-                    toggleVNEngine();
-                };
-                startButton.addEventListener('click', handleToggle);
-                startButton.addEventListener('touchend', handleToggle); // 'touchstart' 대신 'touchend'를 사용합니다.
-            }
-
-
             const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
+            const openSettings = () => SettingsManager.open();
+
+            if (startButton) {
+                startButton.addEventListener('click', toggleVNEngine);
+                startButton.addEventListener('touchstart', toggleVNEngine);
+            }
             if (settingsButton) {
-                const openSettings = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation(); // 이벤트가 다른 곳으로 퍼지는 것을 막습니다.
-                    SettingsManager.open();
-                };
                 settingsButton.addEventListener('click', openSettings);
-                settingsButton.addEventListener('touchend', openSettings); // 'touchstart' 대신 'touchend'를 사용합니다.
+                settingsButton.addEventListener('touchstart', openSettings);
             }
 
             SettingsManager.createModal();
@@ -291,7 +255,7 @@
                     if(el) {
                         el.classList.add('vn-ui-draggable');
                         el.onmousedown = (e) => this.onDragStart(e, el);
-                        el.ontouchstart = (e) => this.onDragStart(e, el); // [모바일 수정] 터치 이벤트 추가
+                        el.ontouchstart = (e) => this.onDragStart(e, el);
                     }
                 });
                 this.createClipEditHandle();
@@ -302,7 +266,7 @@
                     if(el) {
                         el.classList.remove('vn-ui-draggable');
                         el.onmousedown = null;
-                        el.ontouchstart = null; // [모바일 수정] 터치 이벤트 제거
+                        el.ontouchstart = null;
                     }
                 });
                 this.removeClipEditHandle();
@@ -318,29 +282,29 @@
             if (!rect) { const defaultWidth = 600, defaultHeight = 120; rect = { top: window.innerHeight - defaultHeight - 50, left: (window.innerWidth - defaultWidth) / 2, width: defaultWidth, height: defaultHeight }; }
             handle.style.top = `${rect.top}px`; handle.style.left = `${rect.left}px`; handle.style.width = `${rect.width}px`; handle.style.height = `${rect.height}px`;
             handle.onmousedown = (e) => this.onDragStart(e, handle, true);
-            handle.ontouchstart = (e) => this.onDragStart(e, handle, true); // [모바일 수정] 터치 이벤트 추가
+            handle.ontouchstart = (e) => this.onDragStart(e, handle, true);
             const handleTypes = ['top-left', 'top', 'top-right', 'left', 'right', 'bottom-left', 'bottom', 'bottom-right'];
             handleTypes.forEach(type => {
                 const resizeHandle = document.createElement('div');
                 resizeHandle.className = `vn-resize-handle ${type}`;
                 handle.appendChild(resizeHandle);
                 resizeHandle.onmousedown = (e) => { e.stopPropagation(); this.onResizeStart(e, type); };
-                resizeHandle.ontouchstart = (e) => { e.stopPropagation(); this.onResizeStart(e, type); }; // [모바일 수정] 터치 이벤트 추가
+                resizeHandle.ontouchstart = (e) => { e.stopPropagation(); this.onResizeStart(e, type); };
             });
         },
         removeClipEditHandle() { const handle = document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE); if (handle) handle.remove(); },
         onDragStart(e, el, isClipHandle = false) {
             e.preventDefault(); e.stopPropagation();
-            const event = e.touches ? e.touches : e; // [모바일 수정] 터치/마우스 이벤트 정규화
+            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
             this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top };
             document.onmousemove = (ev) => this.onDragMove(ev, isClipHandle);
-            document.ontouchmove = (ev) => this.onDragMove(ev, isClipHandle); // [모바일 수정] 터치 이벤트 추가
+            document.ontouchmove = (ev) => this.onDragMove(ev, isClipHandle);
             document.onmouseup = () => this.onDragEnd(isClipHandle);
-            document.ontouchend = () => this.onDragEnd(isClipHandle); // [모바일 수정] 터치 이벤트 추가
+            document.ontouchend = () => this.onDragEnd(isClipHandle);
         },
         onDragMove(e, isClipHandle) {
             if (!this.dragInfo.element) return;
-            const event = e.touches ? e.touches : e; // [모바일 수정] 터치/마우스 이벤트 정규화
+            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
             const newLeft = event.clientX - this.dragInfo.offsetX;
             const newTop = event.clientY - this.dragInfo.offsetY;
             this.dragInfo.element.style.left = `${newLeft}px`;
@@ -366,22 +330,22 @@
             }
             SettingsManager.save();
             this.dragInfo = {};
-            document.onmousemove = null; document.ontouchmove = null; // [모바일 수정]
-            document.onmouseup = null; document.ontouchend = null; // [모바일 수정]
+            document.onmousemove = null; document.ontouchmove = null;
+            document.onmouseup = null; document.ontouchend = null;
         },
         onResizeStart(e, handleType) {
             e.preventDefault();
-            const event = e.touches ? e.touches : e; // [모바일 수정]
+            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
             this.resizeInfo = { element: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE), handleType: handleType, initialRect: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE).getBoundingClientRect(), initialMouse: { x: event.clientX, y: event.clientY } };
             document.onmousemove = (ev) => this.onResizeMove(ev);
-            document.ontouchmove = (ev) => this.onResizeMove(ev); // [모바일 수정]
+            document.ontouchmove = (ev) => this.onResizeMove(ev);
             document.onmouseup = () => this.onResizeEnd();
-            document.ontouchend = () => this.onResizeEnd(); // [모바일 수정]
+            document.ontouchend = () => this.onResizeEnd();
         },
         onResizeMove(e) {
             const { element, handleType, initialRect, initialMouse } = this.resizeInfo;
             if (!element) return;
-            const event = e.touches ? e.touches : e; // [모바일 수정]
+            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
             const deltaX = event.clientX - initialMouse.x;
             const deltaY = event.clientY - initialMouse.y;
             const minSize = 20;
@@ -406,8 +370,8 @@
                 applyContainerClipping();
             }
             this.resizeInfo = {};
-            document.onmousemove = null; document.ontouchmove = null; // [모바일 수정]
-            document.onmouseup = null; document.ontouchend = null; // [모바일 수정]
+            document.onmousemove = null; document.ontouchmove = null;
+            document.onmouseup = null; document.ontouchend = null;
         },
         showAll() { this.elements.container?.classList.add('visible'); },
         hideAll() { this.elements.container?.classList.remove('visible'); if (SettingsManager.settings.characterMode === 'multi') { this.clearAllMultiCharacters(); } else { this.updateSingleCharacter('off'); } },
@@ -433,7 +397,7 @@
     function toggleVNEngine() { isEngineActive = !isEngineActive; const button = document.getElementById(DOM_IDS.START_BUTTON); if (button) { if (isEngineActive) { button.textContent = 'VN 종료'; button.classList.add('active'); startRealtimeChecker(); } else { button.textContent = 'VN 시작'; button.classList.remove('active'); stopRealtimeChecker(); } } }
 
     // --- 스크립트 초기화 ---
-    console.log("Visual Novel Engine V1.5 (Mobile-Landscape) 로드됨.");
+    console.log("Visual Novel Engine V1.5 (Mobile-Landscape-Fix) 로드됨.");
     SettingsManager.load();
     UIManager.setup();
     let lastUrl = location.href; new MutationObserver(() => { const url = location.href; if (url !== lastUrl) { lastUrl = url; if(isEngineActive) { toggleVNEngine(); } } }).observe(document.body, { subtree: true, childList: true });
