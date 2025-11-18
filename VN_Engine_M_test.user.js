@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.5.9-mobile-fix
+// @version      1.6-mobile-fix
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -10,6 +10,7 @@
 // @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // ==/UserScript==
+
 (function() {
     'use strict';
 
@@ -19,7 +20,7 @@
         CHAR_CONTAINER: 'vn-character-container', STATUS_WINDOW: 'vn-status-window', DIALOGUE_BOX: 'vn-dialogue-box',
         CHAR_NAME: 'vn-character-name', DIALOGUE_TEXT: 'vn-dialogue-text', BACK_BUTTON: 'vn-back-button',
         SETTINGS_MODAL: 'vn-settings-modal', START_BUTTON: 'vn-start-button', SETTINGS_BUTTON: 'vn-settings-button',
-        CLIP_EDIT_HANDLE: 'vn-clip-edit-handle'
+        STATUS_TOGGLE: 'vn-status-toggle-button', INPUT_BUTTON: 'vn-input-button', INPUT_MODAL: 'vn-input-modal'
     };
     const ANIMATION_TYPES = {
         'shake-vertical': '세로 흔들기', 'shake-horizontal': '가로 흔들기', 'flash': '반짝이기',
@@ -30,7 +31,9 @@
     const SettingsManager = {
         defaults: {
             characterMode: 'multi', dialogueBoxPos: { bottom: '40px', left: '50%', transform: 'translateX(-50%)' },
-            statusWindowPos: { top: '20px', right: '20px' }, characterContainerPos: { bottom: '0px', left: '0px' },
+            statusWindowPos: { top: '20px', right: '20px' },
+            statusTogglePos: { top: '20px', right: '20px' },
+            characterContainerPos: { bottom: '0px', left: '0px' },
             backgroundPattern: '/g/', characterPattern: '/c/', clipRect: null, customBackgroundUrl: '', customAnimations: []
         },
         settings: {},
@@ -42,7 +45,7 @@
         save() { localStorage.setItem('vnEngineSettings', JSON.stringify(this.settings)); },
         createModal() {
             const animationOptions = Object.entries(ANIMATION_TYPES).map(([value, name]) => `<option value="${value}">${name}</option>`).join('');
-            const modalHTML = `<div id="${DOM_IDS.SETTINGS_MODAL}" style="display: none; position: fixed; z-index: 100000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);"><div class="vn-modal-content" style="background-color: #2c2c2c; margin: 5% auto; padding: 25px; border: 1px solid #888; width: 90%; max-width: 650px; border-radius: 10px; color: white; font-family: 'Pretendard', sans-serif; max-height: 90vh; overflow-y: auto;"><span id="vn-modal-close" style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span><h2 style="margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px;">VN 엔진 설정</h2><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">캐릭터 표시 방식</label><input type="radio" id="vn-char-mode-single" name="characterMode" value="single"> <label for="vn-char-mode-single">단일 캐릭터</label><br><input type="radio" id="vn-char-mode-multi" name="characterMode" value="multi"> <label for="vn-char-mode-multi">다중 캐릭터 (자동 배치)</label><br><input type="radio" id="vn-char-mode-internal" name="characterMode" value="internalImage"> <label for="vn-char-mode-internal">내부 이미지 (단일)</label></div><div id="vn-custom-bg-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 배경 (단일/내부 모드용)</label><input type="text" id="vn-custom-bg-url-input" class="vn-pattern-input" placeholder="https://..."></div><div id="vn-multi-mode-section" class="vn-setting-option" style="display: none; margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">URL 패턴 설정 (다중 모드 전용)</label><input type="text" id="vn-bg-pattern-input" class="vn-pattern-input" placeholder="배경 키워드"><input type="text" id="vn-char-pattern-input" class="vn-pattern-input" placeholder="캐릭터 키워드"></div><div id="vn-custom-anim-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 연출 (다중 모드 전용)</label><div class="vn-anim-rule-list-container" style="max-height: 150px; overflow-y: auto; background-color: #333; padding: 10px; border-radius: 5px; margin-bottom: 10px;"><ul id="vn-animation-rules-list" style="list-style: none; margin: 0; padding: 0;"></ul></div><div class="vn-anim-add-form" style="display: flex; gap: 10px; margin-bottom: 10px;"><input type="text" id="vn-anim-trigger-input" placeholder="이미지 파일명 포함 단어" class="vn-pattern-input" style="flex: 2;"><select id="vn-anim-type-select" class="vn-pattern-input" style="flex: 1;">${animationOptions}</select><button id="vn-add-anim-rule-btn" class="vn-modal-button">규칙 추가</button></div><div><button id="vn-export-anim-btn" class="vn-modal-button">내보내기</button><button id="vn-import-anim-btn" class="vn-modal-button">가져오기</button><input type="file" id="vn-import-anim-input" style="display:none;" accept=".json"></div></div><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">UI & 클리핑 영역 편집</label><button id="vn-edit-ui-button" class="vn-modal-button">편집 시작</button></div></div></div><style>.vn-modal-button { background-color: #555; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; } .vn-modal-button:hover { background-color: #666; } .vn-pattern-input { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 6px; background-color: #444; color: white; border: 1px solid #666; border-radius: 4px; }</style>`;
+            const modalHTML = `<div id="${DOM_IDS.SETTINGS_MODAL}" style="display: none; position: fixed; z-index: 100000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);"><div class="vn-modal-content" style="background-color: #2c2c2c; margin: 5% auto; padding: 25px; border: 1px solid #888; width: 90%; max-width: 650px; border-radius: 10px; color: white; font-family: 'Pretendard', sans-serif; max-height: 90vh; overflow-y: auto;"><span id="vn-modal-close" style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span><h2 style="margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px;">VN 엔진 설정</h2><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">캐릭터 표시 방식</label><input type="radio" id="vn-char-mode-single" name="characterMode" value="single"> <label for="vn-char-mode-single">단일 캐릭터</label><br><input type="radio" id="vn-char-mode-multi" name="characterMode" value="multi"> <label for="vn-char-mode-multi">다중 캐릭터 (자동 배치)</label><br><input type="radio" id="vn-char-mode-internal" name="characterMode" value="internalImage"> <label for="vn-char-mode-internal">내부 이미지 (단일)</label></div><div id="vn-custom-bg-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 배경 (단일/내부 모드용)</label><input type="text" id="vn-custom-bg-url-input" class="vn-pattern-input" placeholder="https://..."></div><div id="vn-multi-mode-section" class="vn-setting-option" style="display: none; margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">URL 패턴 설정 (다중 모드 전용)</label><input type="text" id="vn-bg-pattern-input" class="vn-pattern-input" placeholder="배경 키워드"><input type="text" id="vn-char-pattern-input" class="vn-pattern-input" placeholder="캐릭터 키워드"></div><div id="vn-custom-anim-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 연출 (다중 모드 전용)</label><div class="vn-anim-rule-list-container" style="max-height: 150px; overflow-y: auto; background-color: #333; padding: 10px; border-radius: 5px; margin-bottom: 10px;"><ul id="vn-animation-rules-list" style="list-style: none; margin: 0; padding: 0;"></ul></div><div class="vn-anim-add-form" style="display: flex; gap: 10px; margin-bottom: 10px;"><input type="text" id="vn-anim-trigger-input" placeholder="이미지 파일명 포함 단어" class="vn-pattern-input" style="flex: 2;"><select id="vn-anim-type-select" class="vn-pattern-input" style="flex: 1;">${animationOptions}</select><button id="vn-add-anim-rule-btn" class="vn-modal-button">규칙 추가</button></div><div><button id="vn-export-anim-btn" class="vn-modal-button">내보내기</button><button id="vn-import-anim-btn" class="vn-modal-button">가져오기</button><input type="file" id="vn-import-anim-input" style="display:none;" accept=".json"></div></div><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">UI 위치 편집</label><button id="vn-edit-ui-button" class="vn-modal-button">편집 시작</button></div></div></div><style>.vn-modal-button { background-color: #555; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; } .vn-modal-button:hover { background-color: #666; } .vn-pattern-input { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 6px; background-color: #444; color: white; border: 1px solid #666; border-radius: 4px; }</style>`;
             document.body.insertAdjacentHTML('beforeend', modalHTML); this.setupModalEventListeners();
         },
         setupModalEventListeners() {
@@ -69,15 +72,13 @@
         close() { document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'none'; },
     };
 
-    // --- 스타일 생성 --- (변경 없음)
+    // --- 스타일 생성 --- (수정함)
     function generateStyles(settings) {
         const posToCss = (posObj) => Object.entries(posObj).map(([key, value]) => `${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}: ${value};`).join(' ');
         let characterStyles = '';
         if (settings.characterMode === 'multi') {
-            // 멀티 캐릭터: 화면 높이를 90%로 제한하여 하단 UI와 겹치지 않도록 조정
             characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 90vh; display: flex; justify-content: center; align-items: flex-end; padding: 0 2%; pointer-events: none; z-index: 2; gap: 2%; } .vn-character-slot { flex: 1 1 0; max-width: 33%; height: 100%; display: flex; justify-content: center; align-items: flex-end; transition: opacity 0.4s, transform 0.4s; } .vn-character-cg { max-width: 95%; max-height: 100%; object-fit: contain; }`;
         } else {
-             // 단일 캐릭터: 캐릭터가 화면 높이를 꽉 채우도록 조정 (max-height: 95%)
              characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 100%; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; z-index: 2; } .vn-character-cg { max-width: 50%; max-height: 95%; object-fit: contain; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; opacity: 0; transform: translateY(20px); } .vn-character-cg.visible { opacity: 1; transform: translateY(0); }`;
         }
         return `
@@ -87,60 +88,55 @@
             #${DOM_IDS.EVENT_CG} { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background-color: #000; z-index: 1; opacity: 0; transition: opacity 0.5s ease-in-out; pointer-events: none; }
             #${DOM_IDS.EVENT_CG}.visible { opacity: 1; }
             ${characterStyles}
-
-            /* [수정] 대화창: 가로 모드에 맞게 세로 크기 최소화 */
-            #${DOM_IDS.DIALOGUE_BOX} {
-                z-index: 3; position: absolute; ${posToCss(settings.dialogueBoxPos)}
-                width: 95%; /* 화면 너비에 맞춤 */
-                max-width: 1200px;
-                background-color: rgba(0, 0, 0, 0.8);
-                border: 1px solid #555; border-radius: 10px;
-                padding: 12px 25px; /* 세로 패딩 대폭 축소 */
-                color: white; font-family: 'Pretendard', sans-serif;
-                pointer-events: auto; box-sizing: border-box; cursor: pointer;
-            }
-            /* [수정] 캐릭터 이름: 대화창에 맞춰 컴팩트하게 조정 */
-            #${DOM_IDS.CHAR_NAME} {
-                position: absolute; top: 0; left: 30px; transform: translateY(-50%);
-                background-color: rgba(40, 40, 40, 0.9);
-                color: white; font-weight: bold; font-size: 1.1em; /* 폰트 소폭 축소 */
-                padding: 4px 12px; /* 패딩 축소 */
-                border-radius: 6px; border: 1px solid #777; z-index: 1;
-            }
-            /* [수정] 대화 텍스트: 가독성을 유지하며 세로 공간 절약 */
-            #${DOM_IDS.DIALOGUE_TEXT} {
-                flex-grow: 1;
-                font-size: 1.2em; /* 폰트 소폭 축소 */
-                line-height: 1.5; /* 줄 간격 소폭 축소 */
-                min-height: 50px; /* 최소 높이 대폭 축소 */
-            }
-            #${DOM_IDS.DIALOGUE_TEXT}.typing-effect { user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; }
-            .action-text { font-style: italic; color: #ccc; }
-
-            /* [수정] 상태창: 화면 상단 중앙에 배치하여 시야 방해 최소화 */
-            #${DOM_IDS.STATUS_WINDOW} {
-                z-index: 3; position: absolute; ${posToCss(settings.statusWindowPos)}
-                width: 85%; /* 너비 확장 */
-                max-height: 40vh; /* 최대 높이를 화면의 40%로 제한 */
-                background-color: rgba(0, 0, 0, 0.7);
-                border: 1px solid #555; border-radius: 8px;
-                padding: 10px 15px; /* 패딩 축소 */
-                color: #eee; font-size: 13px; /* 폰트 축소 */
-                white-space: pre-wrap; overflow-y: auto; pointer-events: auto;
-            }
-            /* [수정] 컨트롤 패널 및 버튼: 터치하기 쉽도록 크기 조정 */
+            #${DOM_IDS.DIALOGUE_BOX} { position: relative; z-index: 3; position: absolute; ${posToCss(settings.dialogueBoxPos)} width: 95%; max-width: 1200px; background-color: rgba(0, 0, 0, 0.8); border: 1px solid #555; border-radius: 10px; padding: 12px 25px; color: white; font-family: 'Pretendard', sans-serif; pointer-events: auto; box-sizing: border-box; cursor: pointer; }
+            #${DOM_IDS.CHAR_NAME} { position: absolute; top: 0; left: 30px; transform: translateY(-50%); background-color: rgba(40, 40, 40, 0.9); color: white; font-weight: bold; font-size: 1.1em; padding: 4px 12px; border-radius: 6px; border: 1px solid #777; z-index: 1; }
+            #${DOM_IDS.DIALOGUE_TEXT} { flex-grow: 1; font-size: 1.2em; line-height: 1.5; min-height: 50px; }
+            #${DOM_IDS.DIALOGUE_TEXT}.typing-effect { user-select: none; } .action-text { font-style: italic; color: #ccc; }
+            #${DOM_IDS.STATUS_TOGGLE} { z-index: 4; position: absolute; ${posToCss(settings.statusTogglePos)} background-color: #333; color: white; border: 1px solid #666; border-radius: 6px; padding: 6px 12px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: background-color 0.2s; pointer-events: auto; }
+            #${DOM_IDS.STATUS_TOGGLE}:hover { background-color: #444; }
+            #${DOM_IDS.STATUS_WINDOW} { z-index: 3; position: absolute; ${posToCss(settings.statusWindowPos)} width: 220px; max-height: 60vh; background-color: rgba(0, 0, 0, 0.75); border: 1px solid #555; border-radius: 8px; padding: 15px; color: #eee; font-size: 14px; white-space: pre-wrap; overflow-y: auto; pointer-events: auto; transform-origin: top right; transition: opacity 0.3s, transform 0.3s; }
+            #${DOM_IDS.STATUS_WINDOW}.collapsed { opacity: 0; transform: scale(0.8); pointer-events: none; }
             .vn-control-panel { position: fixed; left: 15px; bottom: 15px; z-index: 99999; display: flex; gap: 10px; }
             .vn-control-button { background-color: #444; color: white; border: none; border-radius: 8px; padding: 12px 18px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background-color 0.2s; }
             #${DOM_IDS.START_BUTTON} { background-color: #1a73e8; } #${DOM_IDS.START_BUTTON}:hover { background-color: #1765c7; }
             #${DOM_IDS.START_BUTTON}.active { background-color: #c70000; } #${DOM_IDS.START_BUTTON}.active:hover { background-color: #a00000; }
             #${DOM_IDS.SETTINGS_BUTTON}:hover { background-color: #555; }
+            #${DOM_IDS.INPUT_BUTTON} {
+                position: absolute;
+                top: -18px;
+                right: 20px;
+                z-index: 5;
+                background-color: #1a73e8;
+                color: white;
+                border: 1px solid #777;
+                border-radius: 6px;
+                padding: 5px 12px;
+                font-size: 14px;
+                font-weight: bold;
+                cursor: pointer;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                transition: background-color 0.2s, transform 0.2s;
+                pointer-events: auto;
+            }
+            #${DOM_IDS.INPUT_BUTTON}:hover {
+                background-color: #1765c7;
+                transform: translateY(-1px);
+            }
+
+            /* [추가] 입력 모달 스타일 */
+            .vn-input-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 100001; justify-content: center; align-items: center; }
+            .vn-input-modal-content { background-color: #2c2c2c; padding: 20px; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px; }
+            .vn-input-modal-title { margin: 0; color: white; font-size: 1.2em; }
+            .vn-modal-textarea { width: 100%; height: 120px; box-sizing: border-box; padding: 10px; background-color: #444; color: white; border: 1px solid #666; border-radius: 4px; resize: vertical; font-size: 1em; }
+            .vn-input-modal-buttons { display: flex; justify-content: flex-end; gap: 10px; }
+            .vn-modal-button-cancel, .vn-modal-button-send { border: none; border-radius: 5px; padding: 8px 16px; font-weight: bold; cursor: pointer; }
+            .vn-modal-button-cancel { background-color: #555; color: white; } .vn-modal-button-cancel:hover { background-color: #666; }
+            .vn-modal-button-send { background-color: #1a73e8; color: white; } .vn-modal-button-send:hover { background-color: #1765c7; }
+
             #${DOM_IDS.BACK_BUTTON} { position: absolute; bottom: 10px; right: 15px; font-size: 2.2em; color: #888; cursor: pointer; transition: color 0.2s; display: none; }
             #${DOM_IDS.BACK_BUTTON}:hover { color: #ccc; }
             .vn-ui-draggable { border: 2px dashed #00aaff !important; cursor: move !important; user-select: none; pointer-events: auto !important; }
-            #${DOM_IDS.CLIP_EDIT_HANDLE} { position: fixed; border: 2px dashed #ff4757; background-color: rgba(255, 71, 87, 0.2); cursor: move; z-index: 99998; user-select: none; }
-            .vn-resize-handle { position: absolute; width: 14px; height: 14px; background-color: white; border: 2px solid #333; border-radius: 50%; z-index: 99999; }
-            .vn-resize-handle::before { content: ''; position: absolute; left: -9px; top: -9px; width: 32px; height: 32px; background: transparent; }
-            .vn-resize-handle.top-left { top: -8px; left: -8px; cursor: nwse-resize; } .vn-resize-handle.top { top: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .vn-resize-handle.top-right { top: -8px; right: -8px; cursor: nesw-resize; } .vn-resize-handle.left { top: 50%; left: -8px; transform: translateY(-50%); cursor: ew-resize; } .vn-resize-handle.right { top: 50%; right: -8px; transform: translateY(-50%); cursor: ew-resize; } .vn-resize-handle.bottom-left { bottom: -8px; left: -8px; cursor: nesw-resize; } .vn-resize-handle.bottom { bottom: -8px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .vn-resize-handle.bottom-right { bottom: -8px; right: -8px; cursor: nwse-resize; }
+            /* ... (애니메이션 등 나머지 스타일은 그대로 유지) ... */
             @keyframes shake-vertical { 0%, 100% { transform: translateY(0); } 10%, 30%, 50%, 70%, 90% { transform: translateY(-4px); } 20%, 40%, 60%, 80% { transform: translateY(4px); } } .vn-anim-shake-vertical { animation: shake-vertical 0.7s cubic-bezier(.36,.07,.19,.97) both; }
             @keyframes shake-horizontal { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); } 20%, 40%, 60%, 80% { transform: translateX(4px); } } .vn-anim-shake-horizontal { animation: shake-horizontal 0.7s cubic-bezier(.36,.07,.19,.97) both; }
             @keyframes flash { from, 50%, to { opacity: 1; } 25%, 75% { opacity: 0.6; } } .vn-anim-flash { animation: flash 0.8s; }
@@ -199,310 +195,368 @@
     };
 
     // --- UI 관리자 ---
-    const UIManager = {
+const UIManager = {
         elements: {}, activeCharacters: [], dragInfo: {}, resizeInfo: {},
 
-    // [수정] 터치/마우스 이벤트에서 단일 좌표 객체를 반환하도록 수정
-    getEventCoords(e) {
-        if (e.touches && e.touches.length > 0) {
-            return e.touches[0]; // TouchList가 아닌 첫 번째 Touch 객체를 반환
-        }
-        if (e.changedTouches && e.changedTouches.length > 0) {
-            return e.changedTouches[0]; // touchend의 경우
-        }
-        return e; // 마우스 이벤트는 그대로 반환
-    },
-    setup() {
-        GM_addStyle(generateStyles(SettingsManager.settings));
-        const container = document.createElement('div'); container.id = DOM_IDS.CONTAINER;
-        const characterContainerHTML = (SettingsManager.settings.characterMode === 'multi') ? `<div id="${DOM_IDS.CHAR_CONTAINER}"></div>` : `<div id="${DOM_IDS.CHAR_CONTAINER}"><img class="vn-character-cg" id="vn-cg-main"></div>`;
-        container.innerHTML = `<div id="${DOM_IDS.BACKGROUND}"></div><img id="${DOM_IDS.EVENT_CG}" />${characterContainerHTML}<div id="${DOM_IDS.STATUS_WINDOW}"></div><div id="${DOM_IDS.DIALOGUE_BOX}"><div id="${DOM_IDS.CHAR_NAME}"></div><p id="${DOM_IDS.DIALOGUE_TEXT}"></p><div id="${DOM_IDS.BACK_BUTTON}">‹</div></div>`;
-        document.body.appendChild(container);
-        this.elements = { container: document.getElementById(DOM_IDS.CONTAINER), background: document.getElementById(DOM_IDS.BACKGROUND), eventCG: document.getElementById(DOM_IDS.EVENT_CG), charContainer: document.getElementById(DOM_IDS.CHAR_CONTAINER), statusWindow: document.getElementById(DOM_IDS.STATUS_WINDOW), dialogueBox: document.getElementById(DOM_IDS.DIALOGUE_BOX), charName: document.getElementById(DOM_IDS.CHAR_NAME), dialogueText: document.getElementById(DOM_IDS.DIALOGUE_TEXT), backButton: document.getElementById(DOM_IDS.BACK_BUTTON), cgSingle: (SettingsManager.settings.characterMode !== 'multi') ? document.getElementById('vn-cg-main') : null, };
-        this.elements.dialogueBox?.addEventListener('click', (e) => { if (e.target.id !== DOM_IDS.BACK_BUTTON && !e.target.closest(`#${DOM_IDS.BACK_BUTTON}`)) StageManager.next(); });
-        this.elements.backButton?.addEventListener('click', (e) => { e.stopPropagation(); StageManager.previous(); });
-        const controlPanel = document.createElement('div'); controlPanel.className = 'vn-control-panel';
-        controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
-        document.body.appendChild(controlPanel);
+        getEventCoords(e) {
+            if (e.touches && e.touches.length > 0) { return e.touches[0]; }
+            if (e.changedTouches && e.changedTouches.length > 0) { return e.changedTouches[0]; }
+            return e;
+        },
 
-        const startButton = document.getElementById(DOM_IDS.START_BUTTON);
-        const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
-        const openSettings = () => SettingsManager.open();
+        setup() {
+            GM_addStyle(generateStyles(SettingsManager.settings));
+            const container = document.createElement('div');
+            container.id = DOM_IDS.CONTAINER;
+            const characterContainerHTML = (SettingsManager.settings.characterMode === 'multi') ? `<div id="${DOM_IDS.CHAR_CONTAINER}"></div>` : `<div id="${DOM_IDS.CHAR_CONTAINER}"><img class="vn-character-cg" id="vn-cg-main"></div>`;
+            container.innerHTML = `<div id="${DOM_IDS.BACKGROUND}"></div><img id="${DOM_IDS.EVENT_CG}" />${characterContainerHTML}<div id="${DOM_IDS.STATUS_WINDOW}" class="collapsed"></div><button id="${DOM_IDS.STATUS_TOGGLE}">상태</button><div id="${DOM_IDS.DIALOGUE_BOX}"><div id="${DOM_IDS.CHAR_NAME}"></div><p id="${DOM_IDS.DIALOGUE_TEXT}"></p><div id="${DOM_IDS.BACK_BUTTON}">‹</div></div>`;
+            document.body.appendChild(container);
+            this.elements = { container: document.getElementById(DOM_IDS.CONTAINER), background: document.getElementById(DOM_IDS.BACKGROUND), eventCG: document.getElementById(DOM_IDS.EVENT_CG), charContainer: document.getElementById(DOM_IDS.CHAR_CONTAINER), statusWindow: document.getElementById(DOM_IDS.STATUS_WINDOW), statusToggle: document.getElementById(DOM_IDS.STATUS_TOGGLE), dialogueBox: document.getElementById(DOM_IDS.DIALOGUE_BOX), charName: document.getElementById(DOM_IDS.CHAR_NAME), dialogueText: document.getElementById(DOM_IDS.DIALOGUE_TEXT), backButton: document.getElementById(DOM_IDS.BACK_BUTTON), cgSingle: (SettingsManager.settings.characterMode !== 'multi') ? document.getElementById('vn-cg-main') : null, };
+            this.elements.statusToggle?.addEventListener('click', () => this.toggleStatusWindow());
+            this.elements.dialogueBox?.addEventListener('click', (e) => { if (e.target.id !== DOM_IDS.BACK_BUTTON && !e.target.closest(`#${DOM_IDS.BACK_BUTTON}`)) StageManager.next(); });
+            this.elements.backButton?.addEventListener('click', (e) => { e.stopPropagation(); StageManager.previous(); });
+            const controlPanel = document.createElement('div'); controlPanel.className = 'vn-control-panel';
+           controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
+            document.body.appendChild(controlPanel);
+            this.createInputModal();
 
-        if (startButton) {
-            startButton.addEventListener('click', toggleVNEngine);
-            startButton.addEventListener('touchstart', (e) => { e.preventDefault(); toggleVNEngine(); });
-        }
-        if (settingsButton) {
-            settingsButton.addEventListener('click', openSettings);
-            settingsButton.addEventListener('touchstart', (e) => { e.preventDefault(); openSettings(); });
-        }
+            // --- [추가] 입력 버튼을 대화창 내부에 직접 생성하고 이벤트 리스너를 추가합니다. ---
+            const inputButton = document.createElement('button');
+            inputButton.id = DOM_IDS.INPUT_BUTTON;
+            inputButton.textContent = '입력';
+            this.elements.dialogueBox.appendChild(inputButton);
+            inputButton.addEventListener('click', () => this.toggleInputModal(true));
+            const startButton = document.getElementById(DOM_IDS.START_BUTTON);
+            const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
+            const openSettings = () => SettingsManager.open();
+            if (startButton) {
+                startButton.addEventListener('click', toggleVNEngine);
+                startButton.addEventListener('touchstart', (e) => { e.preventDefault(); toggleVNEngine(); });
+            }
+            if (settingsButton) {
+                settingsButton.addEventListener('click', openSettings);
+                settingsButton.addEventListener('touchstart', (e) => { e.preventDefault(); openSettings(); });
+            }
+            SettingsManager.createModal();
+            console.log("VN Engine: 비주얼 노벨 UI 및 제어판이 준비되었습니다.");
+        },
 
-        SettingsManager.createModal();
-        console.log("VN Engine: 비주얼 노벨 UI 및 제어판이 준비되었습니다.");
-    },
-    async updateCharacter(url, characterId = null) { if (SettingsManager.settings.characterMode === 'multi') { await this._updateMultiCharacter(url, characterId); } else { this.updateSingleCharacter(url); } },
-    async _updateMultiCharacter(url, characterIdForOff = null) {
-        const charContainer = this.elements.charContainer; if (!charContainer) return;
-        if (url === 'off') {
-            const charId = characterIdForOff; if (!charId) return;
-            const indexToRemove = this.activeCharacters.findIndex(char => char.id === charId);
-            if (indexToRemove > -1) { const charToRemove = this.activeCharacters[indexToRemove]; if (charToRemove.element) { charToRemove.element.style.opacity = 0; setTimeout(() => charToRemove.element.remove(), 400); } if (this.elements.eventCG.dataset.ownerId === charId) this.hideEventCG(charId); this.activeCharacters.splice(indexToRemove, 1); this._updateCharacterOrder(); }
+        createInputModal() {
+            const modalHTML = `
+                <div id="${DOM_IDS.INPUT_MODAL}" class="vn-input-modal-overlay">
+                    <div class="vn-input-modal-content">
+                        <h3 class="vn-input-modal-title">메시지 입력</h3>
+                        <textarea id="vn-modal-textarea" class="vn-modal-textarea" placeholder="여기에 메시지를 입력하세요..."></textarea>
+                        <div class="vn-input-modal-buttons">
+                            <button id="vn-modal-cancel" class="vn-modal-button-cancel">취소</button>
+                            <button id="vn-modal-send" class="vn-modal-button-send">전송</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            document.getElementById('vn-modal-send').addEventListener('click', () => this.sendMessage());
+            document.getElementById('vn-modal-cancel').addEventListener('click', () => this.toggleInputModal(false));
+            document.getElementById(DOM_IDS.INPUT_MODAL).addEventListener('click', (e) => { if (e.target.id === DOM_IDS.INPUT_MODAL) this.toggleInputModal(false); });
+        },
+
+        toggleInputModal(show) {
+            const modal = document.getElementById(DOM_IDS.INPUT_MODAL);
+            if (!modal) return;
+            modal.style.display = show ? 'flex' : 'none';
+            if (show) { document.getElementById('vn-modal-textarea').focus(); }
+        },
+
+    sendMessage() {
+        const textarea = document.getElementById('vn-modal-textarea');
+        const message = textarea.value.trim();
+        if (!message) return;
+
+        const wrtnTextarea = document.querySelector('textarea[placeholder="메시지 보내기"]');
+        if (!wrtnTextarea) {
+            alert("오류: WRTN의 메시지 입력창을 찾을 수 없습니다. 페이지 구조가 변경되었을 수 있습니다.");
             return;
         }
-        const charInfo = this.parseCharacterInfoFromUrl(url); if (!charInfo) return;
-        const aspectRatio = await this.getImageAspectRatio(url).catch(() => 1); const newMode = aspectRatio > 1.2 ? 'event' : 'standing';
-        const existingChar = this.activeCharacters.find(char => char.id === charInfo.id);
-        if (existingChar) {
-            const oldMode = existingChar.mode; existingChar.url = url; existingChar.mode = newMode;
-            if (newMode === 'event') { this.showEventCG(url, charInfo.id); if (existingChar.element) existingChar.element.style.display = 'none'; }
-            else { if (oldMode === 'event') this.hideEventCG(charInfo.id); if (!existingChar.element) { existingChar.element = this._createCharacterElement(url); } existingChar.element.style.display = 'flex'; const img = existingChar.element.querySelector('.vn-character-cg'); if (img.src !== url) { img.src = url; this.applyAnimation(img, url); } }
-        } else {
-            const newChar = { id: charInfo.id, url, mode: newMode, element: null };
-            if (newMode === 'standing') { newChar.element = this._createCharacterElement(url, false); this.applyAnimation(newChar.element.querySelector('.vn-character-cg'), url); }
-            else { this.showEventCG(url, charInfo.id); }
-            this.activeCharacters.push(newChar); this._updateCharacterOrder();
-        }
-    },
-    _createCharacterElement(url, shouldAppend = false) {
-        const slot = document.createElement('div'); slot.className = 'vn-character-slot'; slot.style.opacity = 0; slot.style.transform = 'translateY(20px)';
-        const img = document.createElement('img'); img.className = 'vn-character-cg'; img.src = url; slot.appendChild(img);
-        if (shouldAppend) { this.elements.charContainer.appendChild(slot); setTimeout(() => { slot.style.opacity = 1; slot.style.transform = 'translateY(0)'; }, 50); }
-        return slot;
-    },
-    _updateCharacterOrder() {
-        const standingChars = this.activeCharacters.filter(c => c.mode === 'standing' && c.element);
-        const container = this.elements.charContainer;
-        standingChars.forEach(char => {
-            container.appendChild(char.element);
-            if (parseFloat(char.element.style.opacity) === 0) { setTimeout(() => { char.element.style.opacity = 1; char.element.style.transform = 'translateY(0)'; }, 50); }
-        });
-    },
-    applyAnimation(imgElement, url) { const filename = url.substring(url.lastIndexOf('/') + 1); const matchingRule = SettingsManager.settings.customAnimations.find(rule => filename.includes(rule.trigger)); if (matchingRule) { const animClass = `vn-anim-${matchingRule.animation}`; imgElement.classList.add(animClass); imgElement.addEventListener('animationend', () => { imgElement.classList.remove(animClass); }, { once: true }); } },
-    getImageAspectRatio(url) { return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img.width / img.height); img.onerror = reject; img.src = url; }); },
-    showEventCG(url, ownerId) { if (this.elements.eventCG) { this.elements.eventCG.dataset.ownerId = ownerId; this.elements.eventCG.src = url; this.elements.eventCG.classList.add('visible'); } },
-    hideEventCG(ownerId) { if (this.elements.eventCG && this.elements.eventCG.dataset.ownerId === ownerId) { this.elements.eventCG.classList.remove('visible'); this.elements.eventCG.dataset.ownerId = ''; setTimeout(() => { if (!this.elements.eventCG.classList.contains('visible')) this.elements.eventCG.src = ''; }, 500); } },
-    clearAllMultiCharacters() { if (this.elements.eventCG.classList.contains('visible')) { this.hideEventCG(this.elements.eventCG.dataset.ownerId); } this.activeCharacters.forEach(char => { if (char.element) char.element.remove(); }); this.activeCharacters = []; },
-    toggleUiEditMode(enable) {
-        const targets = [this.elements.dialogueBox, this.elements.statusWindow, this.elements.charContainer];
-        const editButton = document.getElementById('vn-edit-ui-button');
-        if (!editButton) return;
 
-        // [추가] 이벤트 핸들러를 저장할 객체 초기화
-        if (!this._dragHandlers) {
-            this._dragHandlers = new Map();
+        const inputContainer = wrtnTextarea.parentElement?.parentElement;
+        if (!inputContainer) {
+            alert("오류: WRTN의 입력창 컨테이너를 찾을 수 없습니다. 페이지 구조가 변경되었을 수 있습니다.");
+            return;
         }
 
-        if (enable) {
-            this.showAll();
-            editButton.textContent = '편집 완료';
-            editButton.onclick = () => this.toggleUiEditMode(false);
+        // [수정] 컨테이너 안의 '모든' 버튼을 찾습니다.
+        const allButtons = inputContainer.querySelectorAll('button');
+        if (!allButtons || allButtons.length === 0) {
+            alert("오류: WRTN의 전송 버튼을 찾을 수 없습니다. (컨테이너에 버튼이 없음)");
+            return;
+        }
 
-            targets.forEach(el => {
-                if(el) {
-                    el.classList.add('vn-ui-draggable');
+        // [핵심] 찾은 버튼 목록에서 '가장 마지막' 버튼을 진짜 전송 버튼으로 선택합니다.
+        const wrtnSendButton = allButtons[allButtons.length - 1];
 
-                    // [수정] 핸들러를 생성하고 Map에 저장
-                    const mousedownHandler = (e) => this.onDragStart(e, el);
-                    const touchstartHandler = (e) => this.onDragStart(e, el);
-                    this._dragHandlers.set(el, { mousedownHandler, touchstartHandler });
+        // React가 입력 변경을 인지하도록 값을 설정하고 이벤트를 발생시킴
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        nativeInputValueSetter.call(wrtnTextarea, message);
+        const event = new Event('input', { bubbles: true });
+        wrtnTextarea.dispatchEvent(event);
 
-                    el.addEventListener('mousedown', mousedownHandler);
-                    el.addEventListener('touchstart', touchstartHandler);
-                }
+        // React가 상태를 업데이트하여 버튼을 활성화할 시간을 아주 잠깐(50ms) 줍니다.
+        setTimeout(() => {
+            if (wrtnSendButton.disabled) {
+                // 이 시점에도 비활성화되어 있다면 클릭이 안될 수 있지만, 일단 시도합니다.
+                console.warn("VN Engine: 전송 버튼이 비활성화 상태이지만 클릭을 시도합니다.");
+            }
+            wrtnSendButton.click();
+            textarea.value = '';
+            this.toggleInputModal(false);
+        }, 50);
+    },
+        toggleStatusWindow() {
+            if (!this.elements.statusWindow) return;
+            this.elements.statusWindow.classList.toggle('collapsed');
+        },
+
+        async updateCharacter(url, characterId = null) { if (SettingsManager.settings.characterMode === 'multi') { await this._updateMultiCharacter(url, characterId); } else { this.updateSingleCharacter(url); } },
+        async _updateMultiCharacter(url, characterIdForOff = null) {
+            const charContainer = this.elements.charContainer; if (!charContainer) return;
+            if (url === 'off') {
+                const charId = characterIdForOff; if (!charId) return;
+                const indexToRemove = this.activeCharacters.findIndex(char => char.id === charId);
+                if (indexToRemove > -1) { const charToRemove = this.activeCharacters[indexToRemove]; if (charToRemove.element) { charToRemove.element.style.opacity = 0; setTimeout(() => charToRemove.element.remove(), 400); } if (this.elements.eventCG.dataset.ownerId === charId) this.hideEventCG(charId); this.activeCharacters.splice(indexToRemove, 1); this._updateCharacterOrder(); }
+                return;
+            }
+            const charInfo = this.parseCharacterInfoFromUrl(url); if (!charInfo) return;
+            const aspectRatio = await this.getImageAspectRatio(url).catch(() => 1); const newMode = aspectRatio > 1.2 ? 'event' : 'standing';
+            const existingChar = this.activeCharacters.find(char => char.id === charInfo.id);
+            if (existingChar) {
+                const oldMode = existingChar.mode; existingChar.url = url; existingChar.mode = newMode;
+                if (newMode === 'event') { this.showEventCG(url, charInfo.id); if (existingChar.element) existingChar.element.style.display = 'none'; }
+                else { if (oldMode === 'event') this.hideEventCG(charInfo.id); if (!existingChar.element) { existingChar.element = this._createCharacterElement(url); } existingChar.element.style.display = 'flex'; const img = existingChar.element.querySelector('.vn-character-cg'); if (img.src !== url) { img.src = url; this.applyAnimation(img, url); } }
+            } else {
+                const newChar = { id: charInfo.id, url, mode: newMode, element: null };
+                if (newMode === 'standing') { newChar.element = this._createCharacterElement(url, false); this.applyAnimation(newChar.element.querySelector('.vn-character-cg'), url); }
+                else { this.showEventCG(url, charInfo.id); }
+                this.activeCharacters.push(newChar); this._updateCharacterOrder();
+            }
+        },
+        _createCharacterElement(url, shouldAppend = false) {
+            const slot = document.createElement('div'); slot.className = 'vn-character-slot'; slot.style.opacity = 0; slot.style.transform = 'translateY(20px)';
+            const img = document.createElement('img'); img.className = 'vn-character-cg'; img.src = url; slot.appendChild(img);
+            if (shouldAppend) { this.elements.charContainer.appendChild(slot); setTimeout(() => { slot.style.opacity = 1; slot.style.transform = 'translateY(0)'; }, 50); }
+            return slot;
+        },
+        _updateCharacterOrder() {
+            const standingChars = this.activeCharacters.filter(c => c.mode === 'standing' && c.element);
+            const container = this.elements.charContainer;
+            standingChars.forEach(char => {
+                container.appendChild(char.element);
+                if (parseFloat(char.element.style.opacity) === 0) { setTimeout(() => { char.element.style.opacity = 1; char.element.style.transform = 'translateY(0)'; }, 50); }
             });
-            this.createClipEditHandle();
-        } else {
-            editButton.textContent = '편집 시작';
-            editButton.onclick = () => { SettingsManager.close(); this.toggleUiEditMode(true); };
-
-            targets.forEach(el => {
-                if(el) {
-                    el.classList.remove('vn-ui-draggable');
-
-                    // [수정] Map에서 저장했던 핸들러를 가져와 정확하게 제거
-                    const handlers = this._dragHandlers.get(el);
-                    if (handlers) {
-                        el.removeEventListener('mousedown', handlers.mousedownHandler);
-                        el.removeEventListener('touchstart', handlers.touchstartHandler);
-                        this._dragHandlers.delete(el); // 메모리 정리
+        },
+        applyAnimation(imgElement, url) { const filename = url.substring(url.lastIndexOf('/') + 1); const matchingRule = SettingsManager.settings.customAnimations.find(rule => filename.includes(rule.trigger)); if (matchingRule) { const animClass = `vn-anim-${matchingRule.animation}`; imgElement.classList.add(animClass); imgElement.addEventListener('animationend', () => { imgElement.classList.remove(animClass); }, { once: true }); } },
+        getImageAspectRatio(url) { return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img.width / img.height); img.onerror = reject; img.src = url; }); },
+        showEventCG(url, ownerId) { if (this.elements.eventCG) { this.elements.eventCG.dataset.ownerId = ownerId; this.elements.eventCG.src = url; this.elements.eventCG.classList.add('visible'); } },
+        hideEventCG(ownerId) { if (this.elements.eventCG && this.elements.eventCG.dataset.ownerId === ownerId) { this.elements.eventCG.classList.remove('visible'); this.elements.eventCG.dataset.ownerId = ''; setTimeout(() => { if (!this.elements.eventCG.classList.contains('visible')) this.elements.eventCG.src = ''; }, 500); } },
+        clearAllMultiCharacters() { if (this.elements.eventCG.classList.contains('visible')) { this.hideEventCG(this.elements.eventCG.dataset.ownerId); } this.activeCharacters.forEach(char => { if (char.element) char.element.remove(); }); this.activeCharacters = []; },
+        toggleUiEditMode(enable) {
+            const targets = [this.elements.dialogueBox, this.elements.statusWindow, this.elements.charContainer, this.elements.statusToggle];
+            const editButton = document.getElementById('vn-edit-ui-button');
+            if (!editButton) return;
+            if (!this._dragHandlers) { this._dragHandlers = new Map(); }
+            if (enable) {
+                this.showAll();
+                editButton.textContent = '편집 완료';
+                editButton.onclick = () => this.toggleUiEditMode(false);
+                targets.forEach(el => {
+                    if (el) {
+                        el.classList.add('vn-ui-draggable');
+                        const mousedownHandler = (e) => this.onDragStart(e, el);
+                        const touchstartHandler = (e) => this.onDragStart(e, el);
+                        this._dragHandlers.set(el, { mousedownHandler, touchstartHandler });
+                        el.addEventListener('mousedown', mousedownHandler);
+                        el.addEventListener('touchstart', touchstartHandler);
                     }
-                }
-            });
-            this.removeClipEditHandle();
-            if (!isEngineActive) { this.hideAll(); }
-        }
-    },
-    createClipEditHandle() {
-        if (document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE)) return;
-        const handle = document.createElement('div');
-        handle.id = DOM_IDS.CLIP_EDIT_HANDLE;
-        document.body.appendChild(handle);
-        let rect = SettingsManager.settings.clipRect;
-        if (!rect) { const defaultWidth = 600, defaultHeight = 120; rect = { top: window.innerHeight - defaultHeight - 50, left: (window.innerWidth - defaultWidth) / 2, width: defaultWidth, height: defaultHeight }; }
-        handle.style.top = `${rect.top}px`; handle.style.left = `${rect.left}px`; handle.style.width = `${rect.width}px`; handle.style.height = `${rect.height}px`;
-        handle.addEventListener('mousedown', (e) => this.onDragStart(e, handle, true));
-        handle.addEventListener('touchstart', (e) => this.onDragStart(e, handle, true));
-        const handleTypes = ['top-left', 'top', 'top-right', 'left', 'right', 'bottom-left', 'bottom', 'bottom-right'];
-        handleTypes.forEach(type => {
-            const resizeHandle = document.createElement('div');
-            resizeHandle.className = `vn-resize-handle ${type}`;
-            handle.appendChild(resizeHandle);
-            resizeHandle.addEventListener('mousedown', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
-            resizeHandle.addEventListener('touchstart', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
-        });
-    },
-    removeClipEditHandle() { const handle = document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE); if (handle) handle.remove(); },
-    onDragStart(e, el, isClipHandle = false) {
-        e.preventDefault(); e.stopPropagation();
-        const event = this.getEventCoords(e);
-        this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top, isClipHandle: isClipHandle };
-
-        // [개선] 드래그 시작 시 시각적 피드백
-        el.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
-        el.style.transform = 'scale(1.02)';
-        el.style.boxShadow = '0 0 20px rgba(0, 170, 255, 0.8)';
-
-        document.addEventListener('mousemove', this.onDragMove.bind(this));
-        document.addEventListener('touchmove', this.onDragMove.bind(this), { passive: false }); // 스크롤 방지
-        document.addEventListener('mouseup', this.onDragEnd.bind(this));
-        document.addEventListener('touchend', this.onDragEnd.bind(this));
-    },
-    onDragMove(e) {
-        if (e.cancelable) e.preventDefault(); // 스크롤 방지
-        if (!this.dragInfo.element) return;
-        const event = this.getEventCoords(e);
-        if (!event) return; // 이벤트 좌표가 없으면 중단
-
-        let newLeft = event.clientX - this.dragInfo.offsetX;
-        let newTop = event.clientY - this.dragInfo.offsetY;
-
-        // [개선] 화면 가장자리 스냅 기능
-        const snapThreshold = 20;
-        const el = this.dragInfo.element;
-        const rect = el.getBoundingClientRect();
-        if (newLeft < snapThreshold) newLeft = 0;
-        if (newTop < snapThreshold) newTop = 0;
-        if (Math.abs(newLeft + rect.width - window.innerWidth) < snapThreshold) newLeft = window.innerWidth - rect.width;
-        if (Math.abs(newTop + rect.height - window.innerHeight) < snapThreshold) newTop = window.innerHeight - rect.height;
-
-        el.style.left = `${newLeft}px`;
-        el.style.top = `${newTop}px`;
-
-        if (!this.dragInfo.isClipHandle) {
-            el.style.right = 'auto';
-            el.style.bottom = 'auto';
-        }
-    },
-    onDragEnd() {
-        const draggedEl = this.dragInfo.element;
-        if (!draggedEl) return;
-
-        // [개선] 드래그 종료 시 시각적 피드백 제거
-        draggedEl.style.transform = 'scale(1)';
-        draggedEl.style.boxShadow = 'none';
-        setTimeout(() => { draggedEl.style.transition = ''; }, 100);
-
-        if (this.dragInfo.isClipHandle) {
-            const newRect = draggedEl.getBoundingClientRect();
-            SettingsManager.settings.clipRect = { top: newRect.top, left: newRect.left, width: newRect.width, height: newRect.height };
-            applyContainerClipping();
-        } else {
-            const newPos = { top: `${draggedEl.style.top}`, left: `${draggedEl.style.left}`, transform: 'none' };
-            if (draggedEl.id === DOM_IDS.DIALOGUE_BOX) SettingsManager.settings.dialogueBoxPos = newPos;
-            else if (draggedEl.id === DOM_IDS.STATUS_WINDOW) SettingsManager.settings.statusWindowPos = newPos;
-            else if (draggedEl.id === DOM_IDS.CHAR_CONTAINER) SettingsManager.settings.characterContainerPos = newPos;
-        }
-        SettingsManager.save();
-        this.dragInfo = {};
-        document.removeEventListener('mousemove', this.onDragMove.bind(this));
-        document.removeEventListener('touchmove', this.onDragMove.bind(this));
-        document.removeEventListener('mouseup', this.onDragEnd.bind(this));
-        document.removeEventListener('touchend', this.onDragEnd.bind(this));
-    },
-    onResizeStart(e, handleType) {
-        e.preventDefault(); e.stopPropagation();
-        const event = this.getEventCoords(e);
-        this.resizeInfo = { element: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE), handleType: handleType, initialRect: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE).getBoundingClientRect(), initialMouse: { x: event.clientX, y: event.clientY } };
-        document.addEventListener('mousemove', this.onResizeMove.bind(this));
-        document.addEventListener('touchmove', this.onResizeMove.bind(this), { passive: false });
-        document.addEventListener('mouseup', this.onResizeEnd.bind(this));
-        document.addEventListener('touchend', this.onResizeEnd.bind(this));
-    },
-    onResizeMove(e) {
-        if (e.cancelable) e.preventDefault();
-        const { element, handleType, initialRect, initialMouse } = this.resizeInfo;
-        if (!element) return;
-        const event = this.getEventCoords(e);
-        if (!event) return;
-
-        const deltaX = event.clientX - initialMouse.x;
-        const deltaY = event.clientY - initialMouse.y;
-        const minSize = 20;
-        let { top, left, width, height } = initialRect;
-        if (handleType.includes('top')) { height -= deltaY; top += deltaY; }
-        if (handleType.includes('bottom')) { height += deltaY; }
-        if (handleType.includes('left')) { width -= deltaX; left += deltaX; }
-        if (handleType.includes('right')) { width += deltaX; }
-        if (width < minSize) { if (handleType.includes('left')) left = initialRect.right - minSize; width = minSize; }
-        if (height < minSize) { if (handleType.includes('top')) top = initialRect.bottom - minSize; height = minSize; }
-        element.style.top = `${top}px`;
-        element.style.left = `${left}px`;
-        element.style.width = `${width}px`;
-        element.style.height = `${height}px`;
-    },
-    onResizeEnd() {
-        const { element } = this.resizeInfo;
-        if (element) {
-            const finalRect = element.getBoundingClientRect();
-            SettingsManager.settings.clipRect = { top: finalRect.top, left: finalRect.left, width: finalRect.width, height: finalRect.height };
+                });
+            } else {
+                editButton.textContent = '편집 시작';
+                editButton.onclick = () => { SettingsManager.close(); this.toggleUiEditMode(true); };
+                targets.forEach(el => {
+                    if (el) {
+                        el.classList.remove('vn-ui-draggable');
+                        const handlers = this._dragHandlers.get(el);
+                        if (handlers) {
+                            el.removeEventListener('mousedown', handlers.mousedownHandler);
+                            el.removeEventListener('touchstart', handlers.touchstartHandler);
+                            this._dragHandlers.delete(el);
+                        }
+                    }
+                });
+                if (!isEngineActive) { this.hideAll(); }
+            }
+        },
+        onDragStart(e, el, isClipHandle = false) {
+            e.preventDefault(); e.stopPropagation();
+            const event = this.getEventCoords(e);
+            this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top, isClipHandle: isClipHandle };
+            el.style.transition = 'transform 0.1s ease-out, box-shadow 0.1s ease-out';
+            el.style.transform = 'scale(1.02)';
+            el.style.boxShadow = '0 0 20px rgba(0, 170, 255, 0.8)';
+            document.addEventListener('mousemove', this.onDragMove.bind(this));
+            document.addEventListener('touchmove', this.onDragMove.bind(this), { passive: false });
+            document.addEventListener('mouseup', this.onDragEnd.bind(this));
+            document.addEventListener('touchend', this.onDragEnd.bind(this));
+        },
+        onDragMove(e) {
+            if (e.cancelable) e.preventDefault();
+            if (!this.dragInfo.element) return;
+            const event = this.getEventCoords(e);
+            if (!event) return;
+            let newLeft = event.clientX - this.dragInfo.offsetX;
+            let newTop = event.clientY - this.dragInfo.offsetY;
+            const snapThreshold = 20;
+            const el = this.dragInfo.element;
+            const rect = el.getBoundingClientRect();
+            if (newLeft < snapThreshold) newLeft = 0;
+            if (newTop < snapThreshold) newTop = 0;
+            if (Math.abs(newLeft + rect.width - window.innerWidth) < snapThreshold) newLeft = window.innerWidth - rect.width;
+            if (Math.abs(newTop + rect.height - window.innerHeight) < snapThreshold) newTop = window.innerHeight - rect.height;
+            el.style.left = `${newLeft}px`;
+            el.style.top = `${newTop}px`;
+            if (!this.dragInfo.isClipHandle) {
+                el.style.right = 'auto';
+                el.style.bottom = 'auto';
+            }
+        },
+        onDragEnd() {
+            const draggedEl = this.dragInfo.element;
+            if (!draggedEl) return;
+            draggedEl.style.transform = 'scale(1)';
+            draggedEl.style.boxShadow = 'none';
+            setTimeout(() => { draggedEl.style.transition = ''; }, 100);
+            if (this.dragInfo.isClipHandle) {
+                const newRect = draggedEl.getBoundingClientRect();
+                SettingsManager.settings.clipRect = { top: newRect.top, left: newRect.left, width: newRect.width, height: newRect.height };
+            } else {
+                const newPos = { top: `${draggedEl.style.top}`, left: `${draggedEl.style.left}`, transform: 'none' };
+                if (draggedEl.id === DOM_IDS.DIALOGUE_BOX) SettingsManager.settings.dialogueBoxPos = newPos;
+                else if (draggedEl.id === DOM_IDS.STATUS_WINDOW) SettingsManager.settings.statusWindowPos = newPos;
+                else if (draggedEl.id === DOM_IDS.STATUS_TOGGLE) SettingsManager.settings.statusTogglePos = newPos;
+                else if (draggedEl.id === DOM_IDS.CHAR_CONTAINER) SettingsManager.settings.characterContainerPos = newPos;
+            }
             SettingsManager.save();
-            applyContainerClipping();
-        }
-        this.resizeInfo = {};
-        document.removeEventListener('mousemove', this.onResizeMove.bind(this));
-        document.removeEventListener('touchmove', this.onResizeMove.bind(this));
-        document.removeEventListener('mouseup', this.onResizeEnd.bind(this));
-        document.removeEventListener('touchend', this.onResizeEnd.bind(this));
-    },
-    showAll() { this.elements.container?.classList.add('visible'); },
-    hideAll() { this.elements.container?.classList.remove('visible'); if (SettingsManager.settings.characterMode === 'multi') { this.clearAllMultiCharacters(); } else { this.updateSingleCharacter('off'); } },
-    showBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'block'; },
-    hideBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'none'; },
-    parseCharacterInfoFromUrl(url) { if (!url || url.toLowerCase() === 'off') return null; const filename = url.substring(url.lastIndexOf('/') + 1).split('.')[0]; const match = filename.match(/^([a-zA-Z_]+[a-zA-Z])([0-9_].*)?$/); if (match) { return { id: match[1], fullId: filename }; } return { id: filename, fullId: filename }; },
-    updateSingleCharacter(url) { const img = this.elements.cgSingle; if (!img) return; if (url.toLowerCase() === 'off') { img.classList.remove('visible'); setTimeout(() => { if (!img.classList.contains('visible')) img.src = ''; }, 300); } else { if (img.src !== url) { img.src = url; } if (!img.classList.contains('visible')) { img.classList.add('visible'); } } },
-    applyCustomBackground() { const { characterMode, customBackgroundUrl } = SettingsManager.settings; if ((characterMode === 'single' || characterMode === 'internalImage') && customBackgroundUrl) this.updateBackgroundImage(customBackgroundUrl); },
-    updateBackgroundImage(url) { if(this.elements.background && this.elements.background.style.backgroundImage !== `url("${url}")`) { this.elements.background.style.backgroundImage = `url("${url}")`; } },
-    updateStatusWindow(text) { if(this.elements.statusWindow) this.elements.statusWindow.textContent = text; },
-    updateDialogueBox(character, text, isAction, typeCallback) { const { charName, dialogueText } = this.elements; if (!charName || !dialogueText) return; if (character) { charName.textContent = character; charName.style.display = 'inline-block'; } else { charName.style.display = 'none'; } dialogueText.className = isAction ? 'action-text' : ''; typeCallback(dialogueText, text); },
-    getDialogueTextElement() { return this.elements.dialogueText; }
-};
+            this.dragInfo = {};
+            document.removeEventListener('mousemove', this.onDragMove.bind(this));
+            document.removeEventListener('touchmove', this.onDragMove.bind(this));
+            document.removeEventListener('mouseup', this.onDragEnd.bind(this));
+            document.removeEventListener('touchend', this.onDragEnd.bind(this));
+        },
+        showAll() { this.elements.container?.classList.add('visible'); },
+        hideAll() { this.elements.container?.classList.remove('visible'); if (SettingsManager.settings.characterMode === 'multi') { this.clearAllMultiCharacters(); } else { this.updateSingleCharacter('off'); } },
+        showBackButton() { if (this.elements.backButton) this.elements.backButton.style.display = 'block'; },
+        hideBackButton() { if (this.elements.backButton) this.elements.backButton.style.display = 'none'; },
+        parseCharacterInfoFromUrl(url) {
+            if (!url || url.toLowerCase() === 'off') return null;
+            const filename = url.substring(url.lastIndexOf('/') + 1).split('.')[0];
+            // 아래 한 줄이 PC 버전과 동일하게 수정된 핵심 코드입니다.
+            const match = filename.match(/^([a-zA-Z_]+[a-zA-Z])([0-9_].*)?$/) || filename.match(/^([a-zA-Z]+)([0-9_].*)?$/);
+            if (match && match[1]) {
+                return { id: match[1], fullId: filename };
+            }
+            return { id: filename, fullId: filename };
+        },
+        updateSingleCharacter(url) { const img = this.elements.cgSingle; if (!img) return; if (url.toLowerCase() === 'off') { img.classList.remove('visible'); setTimeout(() => { if (!img.classList.contains('visible')) img.src = ''; }, 300); } else { if (img.src !== url) { img.src = url; } if (!img.classList.contains('visible')) { img.classList.add('visible'); } } },
+        applyCustomBackground() { const { characterMode, customBackgroundUrl } = SettingsManager.settings; if ((characterMode === 'single' || characterMode === 'internalImage') && customBackgroundUrl) this.updateBackgroundImage(customBackgroundUrl); },
+        updateBackgroundImage(url) { if (this.elements.background && this.elements.background.style.backgroundImage !== `url("${url}")`) { this.elements.background.style.backgroundImage = `url("${url}")`; } },
+        updateStatusWindow(text) {
+            const { statusWindow } = this.elements;
+            if (statusWindow) {
+                statusWindow.textContent = text;
+                if (text && text.trim() !== '') {
+                    statusWindow.classList.remove('collapsed');
+                }
+            }
+        },
+        updateDialogueBox(character, text, isAction, typeCallback) { const { charName, dialogueText } = this.elements; if (!charName || !dialogueText) return; if (character) { charName.textContent = character; charName.style.display = 'inline-block'; } else { charName.style.display = 'none'; } dialogueText.className = isAction ? 'action-text' : ''; typeCallback(dialogueText, text); },
+        getDialogueTextElement() { return this.elements.dialogueText; }
+    };
 
-    // --- 데이터 패쳐 및 전역 로직 --- (변경 없음)
-    class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } } function extractCookie(key) {
-    const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`));
-    return e ? decodeURIComponent(e[1]) : null; // 수정 완료!
-    }
-    async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } } class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
+// --- 데이터 패쳐 및 전역 로직 ---
+    class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } }
+    function extractCookie(key) { const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`)); return e ? decodeURIComponent(e[1]) : null; }
+    async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } }
+    class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
     let lastMessageId = null, isChecking = false, pollingInterval = null, isEngineActive = false;
-    function applyContainerClipping() { if (!isEngineActive) return; const vnContainer = UIManager.elements.container; if (!vnContainer) return; const rect = SettingsManager.settings.clipRect; if (rect) { const clipPathValue = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${rect.left}px ${rect.top}px, ${rect.left + rect.width}px ${rect.top}px, ${rect.left + rect.width}px ${rect.top + rect.height}px, ${rect.left}px ${rect.top + rect.height}px, ${rect.left}px ${rect.top}px)`; vnContainer.style.clipPath = clipPathValue; } else { vnContainer.style.clipPath = 'none'; } }
-    function getChatInfoFromUrl() {
-    const pathname = window.location.pathname;
-    const idPattern = /([a-f0-9]{24})/;
-    let match;
-    match = pathname.match(new RegExp("/episodes/" + idPattern.source));
-    if (match) return { id: match[1], type: 'episode' };
-    match = pathname.match(new RegExp("/chats/" + idPattern.source));
-    if (match) return { id: match[1], type: 'chat' };
-    match = pathname.match(new RegExp("/c/" + idPattern.source));
-    if (match) return { id: match[1], type: 'chat' };
-    return null;
-}
-    async function checkForNewMessages() { if (!isEngineActive || isChecking || (StageManager.isVisible && !StageManager.isFinished)) return; isChecking = true; try { const chatInfo = getChatInfoFromUrl(); if (!chatInfo) return; const fetcher = new CrackMessageFetcher(chatInfo.id); const latestMessages = await fetcher.fetch(10); if (latestMessages.length === 0) return; if (lastMessageId === null) { lastMessageId = latestMessages[latestMessages.length - 1].id; return; } const lastSeenIndex = latestMessages.findIndex(msg => msg.id === lastMessageId); const newMessages = latestMessages.slice(lastSeenIndex + 1); if (newMessages.length > 0) { const assistantMessages = newMessages.filter(msg => msg.role === 'assistant' && msg.content && msg.content.trim() !== ''); if (assistantMessages.length > 0) { const fullResponse = assistantMessages.map(m => m.content).join('\n\n'); StageManager.start(fullResponse); } lastMessageId = newMessages[newMessages.length - 1].id; } } catch (error) { console.error("VN Engine: 새 메시지 확인 중 오류:", error); } finally { isChecking = false; } }
-    function startRealtimeChecker() { const chatInfo = getChatInfoFromUrl(); if (chatInfo) { lastMessageId = null; pollingInterval = setInterval(checkForNewMessages, 2500); checkForNewMessages(); setTimeout(applyContainerClipping, 100); window.addEventListener('resize', applyContainerClipping); } }
-    function stopRealtimeChecker() { if (pollingInterval) clearInterval(pollingInterval); pollingInterval = null; lastMessageId = null; isChecking = false; StageManager.hide(); window.removeEventListener('resize', applyContainerClipping); if (UIManager.elements.container) UIManager.elements.container.style.clipPath = 'none'; }
-    function toggleVNEngine() { isEngineActive = !isEngineActive; const button = document.getElementById(DOM_IDS.START_BUTTON); if (button) { if (isEngineActive) { button.textContent = 'VN 종료'; button.classList.add('active'); startRealtimeChecker(); } else { button.textContent = 'VN 시작'; button.classList.remove('active'); stopRealtimeChecker(); } } }
 
+    function getChatInfoFromUrl() {
+        const pathname = window.location.pathname;
+        const idPattern = /([a-f0-9]{24})/;
+        let match;
+        match = pathname.match(new RegExp("/episodes/" + idPattern.source));
+        if (match) return { id: match[1], type: 'episode' };
+        match = pathname.match(new RegExp("/chats/" + idPattern.source));
+        if (match) return { id: match[1], type: 'chat' };
+        match = pathname.match(new RegExp("/c/" + idPattern.source));
+        if (match) return { id: match[1], type: 'chat' };
+        return null;
+    }
+    async function checkForNewMessages() {
+        if (!isEngineActive || isChecking || (StageManager.isVisible && !StageManager.isFinished)) return;
+        isChecking = true;
+        try {
+            const chatInfo = getChatInfoFromUrl();
+            if (!chatInfo) return;
+            const fetcher = new CrackMessageFetcher(chatInfo.id);
+            const latestMessages = await fetcher.fetch(10);
+            if (latestMessages.length === 0) return;
+            if (lastMessageId === null) {
+                lastMessageId = latestMessages[latestMessages.length - 1].id;
+                return;
+            }
+            const lastSeenIndex = latestMessages.findIndex(msg => msg.id === lastMessageId);
+            const newMessages = latestMessages.slice(lastSeenIndex + 1);
+            if (newMessages.length > 0) {
+                const assistantMessages = newMessages.filter(msg => msg.role === 'assistant' && msg.content && msg.content.trim() !== '');
+                if (assistantMessages.length > 0) {
+                    const fullResponse = assistantMessages.map(m => m.content).join('\n\n');
+                    StageManager.start(fullResponse);
+                }
+                lastMessageId = newMessages[newMessages.length - 1].id;
+            }
+        } catch (error) {
+            console.error("VN Engine: 새 메시지 확인 중 오류:", error);
+        } finally {
+            isChecking = false;
+        }
+    }
+    function startRealtimeChecker() {
+        const chatInfo = getChatInfoFromUrl();
+        if (chatInfo) {
+            lastMessageId = null;
+            pollingInterval = setInterval(checkForNewMessages, 2500);
+            checkForNewMessages();
+        }
+    }
+    function stopRealtimeChecker() {
+        if (pollingInterval) clearInterval(pollingInterval);
+        pollingInterval = null;
+        lastMessageId = null;
+        isChecking = false;
+        StageManager.hide();
+    }
+    function toggleVNEngine() {
+        isEngineActive = !isEngineActive;
+        const button = document.getElementById(DOM_IDS.START_BUTTON);
+        if (button) {
+            if (isEngineActive) {
+                button.textContent = 'VN 종료';
+                button.classList.add('active');
+                startRealtimeChecker();
+            } else {
+                button.textContent = 'VN 시작';
+                button.classList.remove('active');
+                stopRealtimeChecker();
+            }
+        }
+    }
     // --- 스크립트 초기화 ---
     console.log("Visual Novel Engine V1.5 (UI-Edit-Fix) 로드됨.");
     SettingsManager.load();
