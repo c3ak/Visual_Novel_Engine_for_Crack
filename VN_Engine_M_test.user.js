@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Visual Novel Engine V1.5_mobile (Landscape-Fix)
+// @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.5.3-mobile-fix
-// @description  모바일 가로 모드 및 버튼 터치 문제를 수정한 비주얼 노벨 엔진입니다.
+// @version      1.5.4-mobile-final
+// @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
 // @grant        GM_addStyle
@@ -58,7 +58,7 @@
             document.getElementById('vn-export-anim-btn').onclick = () => { const dataStr = JSON.stringify(self.settings.customAnimations, null, 2); const blob = new Blob([dataStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'vn_animation_settings.json'; a.click(); URL.revokeObjectURL(url); };
             const importInput = document.getElementById('vn-import-anim-input');
             document.getElementById('vn-import-anim-btn').onclick = () => importInput.click();
-            importInput.onchange = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const importedRules = JSON.parse(event.target.result); if (Array.isArray(importedRules)) { self.settings.customAnimations = importedRules; self.save(); self.renderAnimationRules(); alert('설정을 성공적으로 가져왔습니다.'); } else { throw new Error('JSON is not an array.'); } } catch (err) { console.error("VN Engine Import Error:", err); alert('파일을 가져오는 데 실패했습니다. 파일 형식이 올바른지 확인해주세요. (F12 > Console 확인)'); } }; reader.readAsText(file); importInput.value = ''; };
+            importInput.onchange = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const importedRules = JSON.parse(event.target.result); if (Array.isArray(importedRules)) { self.settings.customAnimations = importedRules; self.save(); self.renderAnimationRules(); alert('설정을 성공적으로 가져왔습니다.'); } else { throw new Error('JSON is not an array.'); } } catch (err) { console.error("VN Engine Import Error:", err); alert('파일을 가져오는 데 실패했습니다. 파일 형식이 올바른지 확인해주세요. (F12 > Console 확인)'); } }; reader.readText(file); importInput.value = ''; };
         },
         renderAnimationRules() {
             const listElement = document.getElementById('vn-animation-rules-list'); if (!listElement) return; listElement.innerHTML = '';
@@ -171,6 +171,16 @@
     // --- UI 관리자 ---
     const UIManager = {
         elements: {}, activeCharacters: [], dragInfo: {}, resizeInfo: {},
+        // [수정] 터치/마우스 이벤트를 정규화하여 올바른 좌표를 반환하는 헬퍼 함수
+        getEventCoords(e) {
+            if (e.touches && e.touches.length > 0) {
+                return e.touches; // touchstart, touchmove
+            }
+            if (e.changedTouches && e.changedTouches.length > 0) {
+                return e.changedTouches; // touchend
+            }
+            return e; // mousedown, mousemove, mouseup
+        },
         setup() {
             GM_addStyle(generateStyles(SettingsManager.settings));
             const container = document.createElement('div'); container.id = DOM_IDS.CONTAINER;
@@ -184,18 +194,17 @@
             controlPanel.innerHTML = `<button id="${DOM_IDS.START_BUTTON}" class="vn-control-button">VN 시작</button><button id="${DOM_IDS.SETTINGS_BUTTON}" class="vn-control-button">설정</button>`;
             document.body.appendChild(controlPanel);
 
-            // [수정] 'click'과 'touchstart' 이벤트를 모두 등록하여 호환성 확보
             const startButton = document.getElementById(DOM_IDS.START_BUTTON);
             const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
             const openSettings = () => SettingsManager.open();
 
             if (startButton) {
                 startButton.addEventListener('click', toggleVNEngine);
-                startButton.addEventListener('touchstart', toggleVNEngine);
+                startButton.addEventListener('touchstart', (e) => { e.preventDefault(); toggleVNEngine(); });
             }
             if (settingsButton) {
                 settingsButton.addEventListener('click', openSettings);
-                settingsButton.addEventListener('touchstart', openSettings);
+                settingsButton.addEventListener('touchstart', (e) => { e.preventDefault(); openSettings(); });
             }
 
             SettingsManager.createModal();
@@ -254,8 +263,8 @@
                 targets.forEach(el => {
                     if(el) {
                         el.classList.add('vn-ui-draggable');
-                        el.onmousedown = (e) => this.onDragStart(e, el);
-                        el.ontouchstart = (e) => this.onDragStart(e, el);
+                        el.addEventListener('mousedown', (e) => this.onDragStart(e, el));
+                        el.addEventListener('touchstart', (e) => this.onDragStart(e, el));
                     }
                 });
                 this.createClipEditHandle();
@@ -265,8 +274,8 @@
                 targets.forEach(el => {
                     if(el) {
                         el.classList.remove('vn-ui-draggable');
-                        el.onmousedown = null;
-                        el.ontouchstart = null;
+                        el.removeEventListener('mousedown', (e) => this.onDragStart(e, el));
+                        el.removeEventListener('touchstart', (e) => this.onDragStart(e, el));
                     }
                 });
                 this.removeClipEditHandle();
@@ -281,44 +290,44 @@
             let rect = SettingsManager.settings.clipRect;
             if (!rect) { const defaultWidth = 600, defaultHeight = 120; rect = { top: window.innerHeight - defaultHeight - 50, left: (window.innerWidth - defaultWidth) / 2, width: defaultWidth, height: defaultHeight }; }
             handle.style.top = `${rect.top}px`; handle.style.left = `${rect.left}px`; handle.style.width = `${rect.width}px`; handle.style.height = `${rect.height}px`;
-            handle.onmousedown = (e) => this.onDragStart(e, handle, true);
-            handle.ontouchstart = (e) => this.onDragStart(e, handle, true);
+            handle.addEventListener('mousedown', (e) => this.onDragStart(e, handle, true));
+            handle.addEventListener('touchstart', (e) => this.onDragStart(e, handle, true));
             const handleTypes = ['top-left', 'top', 'top-right', 'left', 'right', 'bottom-left', 'bottom', 'bottom-right'];
             handleTypes.forEach(type => {
                 const resizeHandle = document.createElement('div');
                 resizeHandle.className = `vn-resize-handle ${type}`;
                 handle.appendChild(resizeHandle);
-                resizeHandle.onmousedown = (e) => { e.stopPropagation(); this.onResizeStart(e, type); };
-                resizeHandle.ontouchstart = (e) => { e.stopPropagation(); this.onResizeStart(e, type); };
+                resizeHandle.addEventListener('mousedown', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
+                resizeHandle.addEventListener('touchstart', (e) => { e.stopPropagation(); this.onResizeStart(e, type); });
             });
         },
         removeClipEditHandle() { const handle = document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE); if (handle) handle.remove(); },
         onDragStart(e, el, isClipHandle = false) {
             e.preventDefault(); e.stopPropagation();
-            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
-            this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top };
-            document.onmousemove = (ev) => this.onDragMove(ev, isClipHandle);
-            document.ontouchmove = (ev) => this.onDragMove(ev, isClipHandle);
-            document.onmouseup = () => this.onDragEnd(isClipHandle);
-            document.ontouchend = () => this.onDragEnd(isClipHandle);
+            const event = this.getEventCoords(e);
+            this.dragInfo = { element: el, offsetX: event.clientX - el.getBoundingClientRect().left, offsetY: event.clientY - el.getBoundingClientRect().top, isClipHandle: isClipHandle };
+            document.addEventListener('mousemove', this.onDragMove.bind(this));
+            document.addEventListener('touchmove', this.onDragMove.bind(this));
+            document.addEventListener('mouseup', this.onDragEnd.bind(this));
+            document.addEventListener('touchend', this.onDragEnd.bind(this));
         },
-        onDragMove(e, isClipHandle) {
+        onDragMove(e) {
             if (!this.dragInfo.element) return;
-            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
+            const event = this.getEventCoords(e);
             const newLeft = event.clientX - this.dragInfo.offsetX;
             const newTop = event.clientY - this.dragInfo.offsetY;
             this.dragInfo.element.style.left = `${newLeft}px`;
             this.dragInfo.element.style.top = `${newTop}px`;
-            if (!isClipHandle) {
+            if (!this.dragInfo.isClipHandle) {
                 this.dragInfo.element.style.right = 'auto';
                 this.dragInfo.element.style.bottom = 'auto';
                 this.dragInfo.element.style.transform = 'none';
             }
         },
-        onDragEnd(isClipHandle) {
+        onDragEnd() {
             const draggedEl = this.dragInfo.element;
             if (!draggedEl) return;
-            if (isClipHandle) {
+            if (this.dragInfo.isClipHandle) {
                 const newRect = draggedEl.getBoundingClientRect();
                 SettingsManager.settings.clipRect = { top: newRect.top, left: newRect.left, width: newRect.width, height: newRect.height };
                 applyContainerClipping();
@@ -330,22 +339,24 @@
             }
             SettingsManager.save();
             this.dragInfo = {};
-            document.onmousemove = null; document.ontouchmove = null;
-            document.onmouseup = null; document.ontouchend = null;
+            document.removeEventListener('mousemove', this.onDragMove.bind(this));
+            document.removeEventListener('touchmove', this.onDragMove.bind(this));
+            document.removeEventListener('mouseup', this.onDragEnd.bind(this));
+            document.removeEventListener('touchend', this.onDragEnd.bind(this));
         },
         onResizeStart(e, handleType) {
-            e.preventDefault();
-            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
+            e.preventDefault(); e.stopPropagation();
+            const event = this.getEventCoords(e);
             this.resizeInfo = { element: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE), handleType: handleType, initialRect: document.getElementById(DOM_IDS.CLIP_EDIT_HANDLE).getBoundingClientRect(), initialMouse: { x: event.clientX, y: event.clientY } };
-            document.onmousemove = (ev) => this.onResizeMove(ev);
-            document.ontouchmove = (ev) => this.onResizeMove(ev);
-            document.onmouseup = () => this.onResizeEnd();
-            document.ontouchend = () => this.onResizeEnd();
+            document.addEventListener('mousemove', this.onResizeMove.bind(this));
+            document.addEventListener('touchmove', this.onResizeMove.bind(this));
+            document.addEventListener('mouseup', this.onResizeEnd.bind(this));
+            document.addEventListener('touchend', this.onResizeEnd.bind(this));
         },
         onResizeMove(e) {
             const { element, handleType, initialRect, initialMouse } = this.resizeInfo;
             if (!element) return;
-            const event = e.touches ? e.touches : e; // [수정] 터치 이벤트 포인터 정규화
+            const event = this.getEventCoords(e);
             const deltaX = event.clientX - initialMouse.x;
             const deltaY = event.clientY - initialMouse.y;
             const minSize = 20;
@@ -370,8 +381,10 @@
                 applyContainerClipping();
             }
             this.resizeInfo = {};
-            document.onmousemove = null; document.ontouchmove = null;
-            document.onmouseup = null; document.ontouchend = null;
+            document.removeEventListener('mousemove', this.onResizeMove.bind(this));
+            document.removeEventListener('touchmove', this.onResizeMove.bind(this));
+            document.removeEventListener('mouseup', this.onResizeEnd.bind(this));
+            document.removeEventListener('touchend', this.onResizeEnd.bind(this));
         },
         showAll() { this.elements.container?.classList.add('visible'); },
         hideAll() { this.elements.container?.classList.remove('visible'); if (SettingsManager.settings.characterMode === 'multi') { this.clearAllMultiCharacters(); } else { this.updateSingleCharacter('off'); } },
@@ -397,9 +410,30 @@
     function toggleVNEngine() { isEngineActive = !isEngineActive; const button = document.getElementById(DOM_IDS.START_BUTTON); if (button) { if (isEngineActive) { button.textContent = 'VN 종료'; button.classList.add('active'); startRealtimeChecker(); } else { button.textContent = 'VN 시작'; button.classList.remove('active'); stopRealtimeChecker(); } } }
 
     // --- 스크립트 초기화 ---
-    console.log("Visual Novel Engine V1.5 (Mobile-Landscape-Fix) 로드됨.");
+    console.log("Visual Novel Engine V1.5 (UI-Edit-Fix) 로드됨.");
     SettingsManager.load();
     UIManager.setup();
     let lastUrl = location.href; new MutationObserver(() => { const url = location.href; if (url !== lastUrl) { lastUrl = url; if(isEngineActive) { toggleVNEngine(); } } }).observe(document.body, { subtree: true, childList: true });
 
-})();
+})();```
+
+### **무엇을 테스트해야 하는가 (UI 편집 기능 집중)**
+
+1.  **사전 준비:**
+    *   기존 스크립트를 위 코드로 완전히 교체하고 저장합니다.
+    *   Kiwi Browser에서 페이지를 새로고침하여 새 스크립트가 적용되도록 합니다.
+
+2.  **편집 모드 진입 테스트:**
+    *   '설정' 버튼을 터치합니다.
+    *   설정 창에서 'UI & 클리핑 영역 편집' 버튼을 터치합니다.
+    *   대화창, 상태창 등에 파란색 점선 테두리가 생기고, 화면에 붉은색 반투명 사각형(클리핑 영역)이 나타나는지 확인합니다.
+
+3.  **핵심: 드래그 & 리사이즈 테스트**
+    *   **드래그:** **손가락으로 대화창을 길게 누른 후, 다른 곳으로 끌어보세요.** 이전과 달리 부드럽게 잘 따라와야 합니다. 상태창도 동일하게 테스트합니다.
+    *   **리사이즈:** 붉은색 클리핑 영역의 **모서리나 변에 있는 흰색 점을 손가락으로 끌어서** 크기를 조절해보세요. 크기가 정상적으로 조절되어야 합니다.
+
+4.  **저장 및 확인 테스트:**
+    *   원하는 위치로 UI를 옮긴 후, '편집 완료' 버튼을 터치합니다.
+    *   VN 엔진을 종료했다가 다시 시작했을 때, 방금 수정한 UI 위치가 그대로 유지되는지 확인합니다.
+
+이 코드로 UI 편집 기능이 정상적으로 작동할 것입니다. 만약 그래도 문제가 발생한다면, 어떤 동작(예: 드래그 시작은 되는데 놓으면 원래 자리로 돌아가요)에서 문제가 생기는지 조금 더 구체적으로 알려주시면 추가로 확인해 보겠습니다.
