@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1.5_mobile (UI-Edit-Fix)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.5.7-mobile-final
+// @version      1.5.8-mobile-fix
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -10,7 +10,6 @@
 // @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // ==/UserScript==
-
 (function() {
     'use strict';
 
@@ -283,26 +282,46 @@
         const targets = [this.elements.dialogueBox, this.elements.statusWindow, this.elements.charContainer];
         const editButton = document.getElementById('vn-edit-ui-button');
         if (!editButton) return;
+
+        // [추가] 이벤트 핸들러를 저장할 객체 초기화
+        if (!this._dragHandlers) {
+            this._dragHandlers = new Map();
+        }
+
         if (enable) {
             this.showAll();
             editButton.textContent = '편집 완료';
             editButton.onclick = () => this.toggleUiEditMode(false);
+
             targets.forEach(el => {
                 if(el) {
                     el.classList.add('vn-ui-draggable');
-                    el.addEventListener('mousedown', (e) => this.onDragStart(e, el));
-                    el.addEventListener('touchstart', (e) => this.onDragStart(e, el));
+
+                    // [수정] 핸들러를 생성하고 Map에 저장
+                    const mousedownHandler = (e) => this.onDragStart(e, el);
+                    const touchstartHandler = (e) => this.onDragStart(e, el);
+                    this._dragHandlers.set(el, { mousedownHandler, touchstartHandler });
+
+                    el.addEventListener('mousedown', mousedownHandler);
+                    el.addEventListener('touchstart', touchstartHandler);
                 }
             });
             this.createClipEditHandle();
         } else {
             editButton.textContent = '편집 시작';
             editButton.onclick = () => { SettingsManager.close(); this.toggleUiEditMode(true); };
+
             targets.forEach(el => {
                 if(el) {
                     el.classList.remove('vn-ui-draggable');
-                    el.removeEventListener('mousedown', (e) => this.onDragStart(e, el));
-                    el.removeEventListener('touchstart', (e) => this.onDragStart(e, el));
+
+                    // [수정] Map에서 저장했던 핸들러를 가져와 정확하게 제거
+                    const handlers = this._dragHandlers.get(el);
+                    if (handlers) {
+                        el.removeEventListener('mousedown', handlers.mousedownHandler);
+                        el.removeEventListener('touchstart', handlers.touchstartHandler);
+                        this._dragHandlers.delete(el); // 메모리 정리
+                    }
                 }
             });
             this.removeClipEditHandle();
@@ -454,8 +473,12 @@
     getDialogueTextElement() { return this.elements.dialogueText; }
 };
 
-// --- 데이터 패쳐 및 전역 로직 --- (변경 없음)
-    class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } } function extractCookie(key) { const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`)); return e ? decodeURIComponent(e) : null; } async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } } class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
+    // --- 데이터 패쳐 및 전역 로직 --- (변경 없음)
+    class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } } function extractCookie(key) {
+    const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`));
+    return e ? decodeURIComponent(e[1]) : null; // 수정 완료!
+    }
+    async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } } class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
     let lastMessageId = null, isChecking = false, pollingInterval = null, isEngineActive = false;
     function applyContainerClipping() { if (!isEngineActive) return; const vnContainer = UIManager.elements.container; if (!vnContainer) return; const rect = SettingsManager.settings.clipRect; if (rect) { const clipPathValue = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${rect.left}px ${rect.top}px, ${rect.left + rect.width}px ${rect.top}px, ${rect.left + rect.width}px ${rect.top + rect.height}px, ${rect.left}px ${rect.top + rect.height}px, ${rect.left}px ${rect.top}px)`; vnContainer.style.clipPath = clipPathValue; } else { vnContainer.style.clipPath = 'none'; } }
     function getChatInfoFromUrl() {
