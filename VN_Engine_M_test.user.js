@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Visual Novel Engine V1_mobile (Beta)_test
 // @namespace    http://tampermonkey.net/
-// @version      1.0-mobile-beta
+// @version      1.0.1-mobile-beta
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
@@ -10,6 +10,7 @@
 // @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // ==/UserScript==
+
 (function() {
     'use strict';
 
@@ -76,7 +77,22 @@
         const posToCss = (posObj) => Object.entries(posObj).map(([key, value]) => `${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}: ${value};`).join(' ');
         let characterStyles = '';
         if (settings.characterMode === 'multi') {
-            characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 90vh; display: flex; justify-content: center; align-items: flex-end; padding: 0 2%; pointer-events: none; z-index: 2; gap: 2%; } .vn-character-slot { flex: 1 1 0; max-width: 33%; height: 100%; display: flex; justify-content: center; align-items: flex-end; transition: opacity 0.4s, transform 0.4s; } .vn-character-cg { max-width: 95%; max-height: 100%; object-fit: contain; }`;
+            characterStyles =
+                `#${DOM_IDS.CHAR_CONTAINER} {
+                ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 90vh;
+                display: flex; justify-content: center; align-items: flex-end; padding: 0 2%;
+                pointer-events: none; z-index: 2; gap: -5%; } /* 겹치게 하려면 이 숫자를 음수(예: -10%)로, 떨어뜨리려면 양수로 */
+
+                .vn-character-slot { flex: 1 1 0;
+                max-width: 50%; /* 이미지 크기 조절 */
+                height: 100%;
+                display:
+
+                flex; justify-content: center; align-items:
+                flex-end; transition: opacity 0.4s, transform 0.4s; }
+                .vn-character-cg { max-width: 95%;
+                max-height: 100%;
+                object-fit: contain; }`;
         } else {
              characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 100%; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; z-index: 2; } .vn-character-cg { max-width: 50%; max-height: 95%; object-fit: contain; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; opacity: 0; transform: translateY(20px); } .vn-character-cg.visible { opacity: 1; transform: translateY(0); }`;
         }
@@ -238,8 +254,127 @@
                 case 'status_window': this.next(); break;
             }
         },
-        parsers: [ { condition: () => SettingsManager.settings.characterMode === 'multi', regex: /^!\[([a-zA-Z0-9_]+)\]\((off)\)$/, handler: match => ({ type: 'character_update', url: 'off', characterId: match[1] }) }, { condition: () => SettingsManager.settings.characterMode === 'multi', regex: /^!\[\]\((.*?)\)$/, handler: match => { const url = match[1].trim(); const { backgroundPattern, characterPattern } = SettingsManager.settings; if (backgroundPattern && url.includes(backgroundPattern)) return { type: 'background_image', url }; if (characterPattern && url.includes(characterPattern)) return { type: 'character_update', url }; return { type: 'character_update', url }; } }, { condition: () => SettingsManager.settings.characterMode === 'single', regex: /^!\[bg\]\((.*?)\)$/, handler: match => ({ type: 'background_image', url: match[1].trim() }) }, { condition: () => SettingsManager.settings.characterMode === 'single', regex: /^!\[\]\((?!.*\b!\[bg\]\b)(.*?)\)$/, handler: match => ({ type: 'character_update', url: match[1].trim() }) }, { condition: () => SettingsManager.settings.characterMode === 'internalImage', regex: /^!\[(.+?)\]\((.*?)\)$/, handler: match => ({ type: 'character_update', url: match[2].trim() }) }, { regex: /^"?\*\*(.*?)\*\*\s*[|｜]\s*(.*?)"?$/, handler: match => ({ type: 'dialogue', character: match[1].trim(), content: match[2].trim() }) }, { regex: /^\*(.*)\*$/, handler: match => ({ type: 'action', content: match[1].trim() }) } ],
-        parseCueSheet(rawText) { const lines = rawText.split('\n'); const cueSheet = []; let inCodeBlock = false; let codeBlockContent = ''; for (const line of lines) { const trimmedLine = line.trim(); if (trimmedLine.startsWith('```')) { inCodeBlock = !inCodeBlock; if (!inCodeBlock && codeBlockContent) { cueSheet.push({ type: 'status_window', content: codeBlockContent.trim() }); codeBlockContent = ''; } continue; } if (inCodeBlock) { codeBlockContent += line + '\n'; continue; } if (trimmedLine === '' || trimmedLine.startsWith('[//]: #')) continue; let matched = false; for (const parser of this.parsers) { if (parser.condition && !parser.condition()) continue; const match = trimmedLine.match(parser.regex); if (match) { cueSheet.push(parser.handler(match)); matched = true; break; } } if (!matched) { cueSheet.push({ type: 'action', content: trimmedLine }); } } if (codeBlockContent) { cueSheet.push({ type: 'status_window', content: codeBlockContent.trim() }); } return cueSheet; }
+        parsers: [
+            // 1. 멀티 모드: 캐릭터 끄기 (![ID](off))
+            {
+                condition: () => SettingsManager.settings.characterMode === 'multi',
+                regex: /^!\[([a-zA-Z0-9_]+)\]\((off)\)$/,
+                handler: match => ({ type: 'character_update', url: 'off', characterId: match[1] })
+            },
+            // 2. 멀티 모드: 자동 감지 (![](URL))
+            {
+                condition: () => SettingsManager.settings.characterMode === 'multi',
+                regex: /^!\[\]\((.*?)\)$/,
+                handler: match => {
+                    const url = match[1].trim();
+                    const { backgroundPattern, characterPattern } = SettingsManager.settings;
+                    if (backgroundPattern && url.includes(backgroundPattern)) return { type: 'background_image', url };
+                    if (characterPattern && url.includes(characterPattern)) return { type: 'character_update', url };
+                    return { type: 'character_update', url };
+                }
+            },
+            // 3. 싱글 모드: 배경 변경 (![bg](URL))
+            {
+                condition: () => SettingsManager.settings.characterMode === 'single',
+                regex: /^!\[bg\]\((.*?)\)$/,
+                handler: match => ({ type: 'background_image', url: match[1].trim() })
+            },
+            // 4. 싱글 모드: 캐릭터 변경 (![](URL))
+            {
+                condition: () => SettingsManager.settings.characterMode === 'single',
+                regex: /^!\[\]\((?!.*\b!\[bg\]\b)(.*?)\)$/,
+                handler: match => ({ type: 'character_update', url: match[1].trim() })
+            },
+            // 5. 내부 이미지 모드
+            {
+                condition: () => SettingsManager.settings.characterMode === 'internalImage',
+                regex: /^!\[(.+?)\]\((.*?)\)$/,
+                handler: match => ({ type: 'character_update', url: match[2].trim() })
+            },
+            // 6. 대화문 (**이름** | 내용)
+            {
+                regex: /^"?\*\*(.*?)\*\*\s*[|｜]\s*(.*?)"?$/,
+                handler: match => ({ type: 'dialogue', character: match[1].trim(), content: match[2].trim() })
+            },
+            // 7. [수정됨] 지문 (*내용*) -> 2문장씩 자르기 적용
+            {
+                regex: /^\*(.*)\*$/,
+                handler: match => {
+                    const content = match[1].trim();
+
+                    // 문장 부호(.!?)를 기준으로 문장을 나눕니다.
+                    const sentences = content.match(/[^.!?]+[.!?]+["']?|[^.!?]+$/g);
+
+                    // 문장 분리가 안 되면 그냥 통째로 반환
+                    if (!sentences || sentences.length === 0) {
+                        return { type: 'action', content: content };
+                    }
+
+                    const results = [];
+                    // 2문장씩 묶어서 결과 배열 생성
+                    for (let i = 0; i < sentences.length; i += 2) {
+                        let chunk = sentences[i].trim();
+                        if (sentences[i + 1]) {
+                            chunk += ' ' + sentences[i + 1].trim();
+                        }
+                        results.push({ type: 'action', content: chunk });
+                    }
+                    return results; // 배열 반환
+                }
+            }
+        ],
+        parseCueSheet(rawText) {
+            const lines = rawText.split('\n');
+            const cueSheet = [];
+            let inCodeBlock = false;
+            let codeBlockContent = '';
+
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+
+                // 코드 블록(상태창) 처리
+                if (trimmedLine.startsWith('```')) {
+                    inCodeBlock = !inCodeBlock;
+                    if (!inCodeBlock && codeBlockContent) {
+                        cueSheet.push({ type: 'status_window', content: codeBlockContent.trim() });
+                        codeBlockContent = '';
+                    }
+                    continue;
+                }
+                if (inCodeBlock) {
+                    codeBlockContent += line + '\n';
+                    continue;
+                }
+
+                // 빈 줄이나 주석 무시
+                if (trimmedLine === '' || trimmedLine.startsWith('[//]: #')) continue;
+
+                let matched = false;
+                for (const parser of this.parsers) {
+                    if (parser.condition && !parser.condition()) continue;
+                    const match = trimmedLine.match(parser.regex);
+                    if (match) {
+                        // [중요 변경점] 결과가 배열(여러 화면)이면 펼쳐서 넣고, 아니면 그냥 넣기
+                        const result = parser.handler(match);
+                        if (Array.isArray(result)) {
+                            cueSheet.push(...result);
+                        } else {
+                            cueSheet.push(result);
+                        }
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) {
+                    // 매칭 안 되는 일반 텍스트도 2문장씩 끊고 싶다면 여기도 로직 추가 가능 (일단 기본 유지)
+                    cueSheet.push({ type: 'action', content: trimmedLine });
+                }
+            }
+            if (codeBlockContent) {
+                cueSheet.push({ type: 'status_window', content: codeBlockContent.trim() });
+            }
+            return cueSheet;
+        },
     };
 
     // --- UI 관리자 ---
