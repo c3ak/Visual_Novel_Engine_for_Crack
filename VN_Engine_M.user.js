@@ -7,6 +7,8 @@
 // @match        *://crack.wrtn.ai/*
 // @grant        GM_addStyle
 // @run-at       document-idle
+// @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
+// @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // ==/UserScript==
 
 (function() {
