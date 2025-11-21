@@ -1,14 +1,12 @@
 // ==UserScript==
-// @name         Visual Novel Engine V1_mobile (Beta)_test
+// @name         Visual Novel Engine V1_mobile
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1-mobile-beta
+// @version      1.2-mobile-beta
 // @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
 // @author       You & AI Assistant
 // @match        *://crack.wrtn.ai/*
 // @grant        GM_addStyle
 // @run-at       document-idle
-// @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
-// @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M_test.user.js
 // ==/UserScript==
 
 (function() {
@@ -20,7 +18,9 @@
         CHAR_CONTAINER: 'vn-character-container', STATUS_WINDOW: 'vn-status-window', DIALOGUE_BOX: 'vn-dialogue-box',
         CHAR_NAME: 'vn-character-name', DIALOGUE_TEXT: 'vn-dialogue-text', BACK_BUTTON: 'vn-back-button',
         SETTINGS_MODAL: 'vn-settings-modal', START_BUTTON: 'vn-start-button', SETTINGS_BUTTON: 'vn-settings-button',
-        STATUS_TOGGLE: 'vn-status-toggle-button', INPUT_BUTTON: 'vn-input-button', INPUT_MODAL: 'vn-input-modal'
+        STATUS_TOGGLE: 'vn-status-toggle-button', INPUT_BUTTON: 'vn-input-button', INPUT_MODAL: 'vn-input-modal',
+        LOG_BUTTON: 'vn-log-button', LOG_MODAL: 'vn-log-modal',
+        LOADING_INDICATOR: 'vn-loading-indicator'
     };
     const ANIMATION_TYPES = {
         'shake-vertical': '세로 흔들기', 'shake-horizontal': '가로 흔들기', 'flash': '반짝이기',
@@ -72,27 +72,73 @@
         close() { document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'none'; },
     };
 
+        // --- 로그 관리자 ---
+    const LogManager = {
+        history: [], // [ {character: '이름', content: '대사'}, ... ] 형태로 저장
+
+        // 로그 추가
+        add(character, content) {
+            // action 텍스트는 character가 null이 될 수 있음
+            this.history.push({ character: character || null, content });
+        },
+
+        // 새 대화 시작 시 로그 초기화
+        clear() {
+            this.history = [];
+        },
+
+        // 로그 모달에 표시할 HTML 생성
+        render() {
+            if (this.history.length === 0) {
+                return '<p style="text-align: center; color: #888;">표시할 로그가 없습니다.</p>';
+            }
+            return this.history.map(log => {
+                if (log.character) {
+                    // 캐릭터 대사 로그
+                    return `<div class="vn-log-entry">
+                                <strong class="vn-log-char">${log.character}</strong>
+                                <p class="vn-log-content">${log.content}</p>
+                            </div>`;
+                } else {
+                    // 행동(나레이션) 로그
+                    return `<div class="vn-log-entry">
+                                <p class="vn-log-content action">${log.content}</p>
+                            </div>`;
+                }
+            }).join('');
+        }
+    };
+
     // --- 스타일 생성 --- (수정함)
     function generateStyles(settings) {
         const posToCss = (posObj) => Object.entries(posObj).map(([key, value]) => `${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}: ${value};`).join(' ');
         let characterStyles = '';
-        if (settings.characterMode === 'multi') {
-            characterStyles =
-                `#${DOM_IDS.CHAR_CONTAINER} {
-                ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 90vh;
-                display: flex; justify-content: center; align-items: flex-end; padding: 0 2%;
-                pointer-events: none; z-index: 2; gap: -5%; } /* 겹치게 하려면 이 숫자를 음수(예: -10%)로, 떨어뜨리려면 양수로 */
-
-                .vn-character-slot { flex: 1 1 0;
-                max-width: 50%; /* 이미지 크기 조절 */
-                height: 100%;
-                display:
-
-                flex; justify-content: center; align-items:
-                flex-end; transition: opacity 0.4s, transform 0.4s; }
-                .vn-character-cg { max-width: 95%;
-                max-height: 100%;
-                object-fit: contain; }`;
+    if (settings.characterMode === 'multi') {
+        characterStyles = `
+        #${DOM_IDS.CHAR_CONTAINER} {
+        ${posToCss(settings.characterContainerPos)}
+        position: absolute;
+        width: 100%;
+        height: 95vh; /* 모바일 높이에 맞게 조절 */
+        pointer-events: none;
+        z-index: 2;
+        }
+        .vn-character-slot {
+        position: absolute; /* 이제 flex가 아니라 절대 위치로 제어됨 */
+        bottom: 0;
+        width: 50%; /* 모바일 화면이 좁으므로 45%~50% 정도 추천 */
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        /* left 속성에 애니메이션 추가 */
+        transition: opacity 0.4s, transform 0.4s, left 0.4s ease-in-out;
+        }
+        .vn-character-cg {
+        max-width: 110%;
+        max-height: 100%;
+        object-fit: contain;
+        }`;
         } else {
              characterStyles = `#${DOM_IDS.CHAR_CONTAINER} { ${posToCss(settings.characterContainerPos)} position: absolute; width: 100%; height: 100%; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; z-index: 2; } .vn-character-cg { max-width: 50%; max-height: 95%; object-fit: contain; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; opacity: 0; transform: translateY(20px); } .vn-character-cg.visible { opacity: 1; transform: translateY(0); }`;
         }
@@ -186,6 +232,35 @@
                 background-color: #1765c7;
                 transform: translateY(-1px);
             }
+            #${DOM_IDS.LOG_BUTTON} {
+                position: absolute;
+                top: -18px; /* 입력 버튼과 동일한 높이 */
+                right: 70px; /* 입력 버튼('입력') 너비 + 간격 만큼 왼쪽으로 이동 */
+                z-index: 10;
+                background-color: #555; /* 기본 버튼 색상 */
+                color: white;
+                border: 1px solid #777;
+                border-radius: 6px;
+                padding: 5px 12px;
+                font-size: 14px;
+                font-weight: bold;
+                cursor: pointer;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                transition: background-color 0.2s;
+                pointer-events: auto;
+            }
+            #${DOM_IDS.LOG_BUTTON}:hover { background-color: #666; }
+
+            .vn-log-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 100002; justify-content: center; align-items: center; }
+            .vn-log-modal-content { display: flex; flex-direction: column; background-color: #2c2c2c; padding: 20px; border-radius: 10px; width: 90%; max-width: 600px; height: 80vh; box-shadow: 0 5px 15px rgba(0,0,0,0.5); color: white; }
+            .vn-log-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+            .vn-log-modal-title { margin: 0; font-size: 1.3em; }
+            .vn-log-modal-close { font-size: 1.8em; font-weight: bold; color: #aaa; cursor: pointer; }
+            .vn-log-modal-body { flex-grow: 1; overflow-y: auto; padding-right: 10px; }
+            .vn-log-entry { margin-bottom: 12px; border-bottom: 1px solid #444; padding-bottom: 12px; }
+            .vn-log-char { color: #a2d2ff; font-size: 1.0em; }
+            .vn-log-content { margin: 5px 0 0 0; font-size: 1.1em; line-height: 1.5; }
+            .vn-log-content.action { font-style: italic; color: #ccc; }
 
             /* [추가] 입력 모달 스타일 */
             .vn-input-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 100001; justify-content: center; align-items: center; }
@@ -206,6 +281,23 @@
             @keyframes flash { from, 50%, to { opacity: 1; } 25%, 75% { opacity: 0.6; } } .vn-anim-flash { animation: flash 0.8s; }
             @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-15px); } 60% { transform: translateY(-8px); } } .vn-anim-bounce { animation: bounce 1s; }
             @keyframes vibrate { 0% { transform: translate(0); } 20% { transform: translate(-1px, 1px); } 40% { transform: translate(-1px, -1px); } 60% { transform: translate(1px, 1px); } 80% { transform: translate(1px, -1px); } 100% { transform: translate(0); } } .vn-anim-vibrate { animation: vibrate 0.2s linear infinite; animation-iteration-count: 3; }
+            #${DOM_IDS.LOADING_INDICATOR} {
+                position: absolute;
+                bottom: 15px; /* 뒤로가기 버튼과 같은 높이 */
+                right: 60px;  /* 뒤로가기 버튼(15px)보다 왼쪽(앞)에 위치 */
+                width: 24px;
+                height: 24px;
+                border: 3px solid rgba(255, 255, 255, 0.3);
+                border-radius: 50%;
+                border-top-color: #fff; /* 하얀색이 돔 */
+                animation: vn-spin 1s ease-in-out infinite;
+                z-index: 10;
+                display: none; /* 평소에는 숨김 */
+                pointer-events: none;
+            }
+            @keyframes vn-spin {
+                to { transform: rotate(360deg); }
+            }
         `;
     }
 
@@ -249,8 +341,11 @@
             switch (cue.type) {
                 case 'character_update': await UIManager.updateCharacter(cue.url, cue.characterId); this.next(); break;
                 case 'background_image': UIManager.updateBackgroundImage(cue.url); this.next(); break;
-                case 'action': UIManager.updateDialogueBox(null, cue.content, true, (el, text) => this.type(el, text)); break;
-                case 'dialogue': UIManager.updateDialogueBox(cue.character, cue.content, false, (el, text) => this.type(el, text)); break;
+                case 'action':
+                LogManager.add(null, cue.content); // ★ 추가
+                UIManager.updateDialogueBox(null, cue.content, true, (el, text) => this.type(el, text));
+                break;
+                case 'dialogue': LogManager.add(cue.character, cue.content); UIManager.updateDialogueBox(cue.character, cue.content, false, (el, text) => this.type(el, text)); break;
                 case 'status_window': this.next(); break;
             }
         },
@@ -396,7 +491,14 @@
             document.body.appendChild(container);
             this.elements = { container: document.getElementById(DOM_IDS.CONTAINER), background: document.getElementById(DOM_IDS.BACKGROUND), eventCG: document.getElementById(DOM_IDS.EVENT_CG), charContainer: document.getElementById(DOM_IDS.CHAR_CONTAINER), statusWindow: document.getElementById(DOM_IDS.STATUS_WINDOW), statusToggle: document.getElementById(DOM_IDS.STATUS_TOGGLE), dialogueBox: document.getElementById(DOM_IDS.DIALOGUE_BOX), charName: document.getElementById(DOM_IDS.CHAR_NAME), dialogueText: document.getElementById(DOM_IDS.DIALOGUE_TEXT), backButton: document.getElementById(DOM_IDS.BACK_BUTTON), cgSingle: (SettingsManager.settings.characterMode !== 'multi') ? document.getElementById('vn-cg-main') : null, };
             this.elements.statusToggle?.addEventListener('click', () => this.toggleStatusWindow());
-            this.elements.dialogueBox?.addEventListener('click', (e) => { if (e.target.id !== DOM_IDS.BACK_BUTTON && !e.target.closest(`#${DOM_IDS.BACK_BUTTON}`)) StageManager.next(); });
+            this.elements.dialogueBox?.addEventListener('click', (e) => {
+            // 클릭된 대상이 버튼(로그, 입력, 뒤로가기) 중 하나인지 확인합니다.
+            if (e.target.closest(`#${DOM_IDS.LOG_BUTTON}, #${DOM_IDS.INPUT_BUTTON}, #${DOM_IDS.BACK_BUTTON}`)) {
+            return; // 버튼을 눌렀다면, 대화 넘기기를 실행하지 않고 여기서 함수를 종료합니다.
+            }
+            // 위의 경우가 아니라면, 일반적인 대화창 클릭이므로 다음 대사로 넘어갑니다.
+            StageManager.next();
+            });
             this.elements.backButton?.addEventListener('click', (e) => { e.stopPropagation(); StageManager.previous(); });
             const controlPanel = document.createElement('div');
             // [수정] 초기 상태를 닫힘으로 설정하기 위해 'collapsed' 클래스를 추가합니다.
@@ -421,7 +523,12 @@
                 // 아이콘 모양을 화살표로 변경
                 drawerToggle.textContent = controlPanel.classList.contains('collapsed') ? '›' : '‹';
             });
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.id = DOM_IDS.LOADING_INDICATOR;
+            this.elements.dialogueBox.appendChild(loadingIndicator);
+
             this.createInputModal();
+            this.createLogModal();
 
             // --- [추가] 입력 버튼을 대화창 내부에 직접 생성하고 이벤트 리스너를 추가합니다. ---
             const inputButton = document.createElement('button');
@@ -429,6 +536,14 @@
             inputButton.textContent = '입력';
             this.elements.dialogueBox.appendChild(inputButton);
             inputButton.addEventListener('click', () => this.toggleInputModal(true));
+            const logButton = document.createElement('button');
+            logButton.id = DOM_IDS.LOG_BUTTON;
+            logButton.textContent = '로그';
+            this.elements.dialogueBox.appendChild(logButton);
+            logButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // 대화창 클릭으로 넘어가지 않게 함
+            this.toggleLogModal(true);
+        });
             const startButton = document.getElementById(DOM_IDS.START_BUTTON);
             const settingsButton = document.getElementById(DOM_IDS.SETTINGS_BUTTON);
             const openSettings = () => SettingsManager.open();
@@ -547,19 +662,66 @@
             if (shouldAppend) { this.elements.charContainer.appendChild(slot); setTimeout(() => { slot.style.opacity = 1; slot.style.transform = 'translateY(0)'; }, 50); }
             return slot;
         },
-        _updateCharacterOrder() {
-            const standingChars = this.activeCharacters.filter(c => c.mode === 'standing' && c.element);
-            const container = this.elements.charContainer;
-            standingChars.forEach(char => {
+    _updateCharacterOrder() {
+        const standingChars = this.activeCharacters.filter(c => c.mode === 'standing' && c.element);
+        const container = this.elements.charContainer;
+        const charCount = standingChars.length;
+
+        if (charCount === 0) return;
+
+        // --- [PC 로직 이식] 동적 겹침 계산 ---
+        let overlapPercent;
+
+        // 모바일은 화면이 좁으므로 PC보다 겹침 값을 더 크게 잡는 것이 좋습니다.
+        const baseOverlap = 15; // 기본 겹침 (%)
+        const additionalOverlapPerChar = 8; // 인원 추가 시 더 겹치게 할 값 (%)
+
+        if (charCount <= 2) {
+        overlapPercent = baseOverlap;
+        } else {
+        overlapPercent = 10 + (additionalOverlapPerChar * (charCount - 2));
+        }
+
+    // CSS에서 설정한 width와 맞춰야 합니다 (위에서 45%로 설정했으므로 여기도 45)
+        const charWidth = 50;
+        const stepWidth = charWidth - overlapPercent;
+        const totalGroupWidth = (stepWidth * (charCount - 1)) + charWidth;
+
+    // 화면 중앙 정렬을 위한 시작점 계산
+        const startLeft = (100 - totalGroupWidth) / 2;
+
+        standingChars.forEach((char, index) => {
+            if (!char.element.parentElement) {
                 container.appendChild(char.element);
-                if (parseFloat(char.element.style.opacity) === 0) { setTimeout(() => { char.element.style.opacity = 1; char.element.style.transform = 'translateY(0)'; }, 50); }
-            });
-        },
+        }
+
+        // 계산된 위치(left) 적용
+            const charLeft = startLeft + (index * stepWidth);
+            char.element.style.left = `${charLeft}%`;
+
+        // 등장 애니메이션
+        if (parseFloat(char.element.style.opacity) === 0) {
+            setTimeout(() => {
+                char.element.style.opacity = 1;
+                char.element.style.transform = 'translateY(0)';
+            }, 50);
+        }
+    });
+},
         applyAnimation(imgElement, url) { const filename = url.substring(url.lastIndexOf('/') + 1); const matchingRule = SettingsManager.settings.customAnimations.find(rule => filename.includes(rule.trigger)); if (matchingRule) { const animClass = `vn-anim-${matchingRule.animation}`; imgElement.classList.add(animClass); imgElement.addEventListener('animationend', () => { imgElement.classList.remove(animClass); }, { once: true }); } },
         getImageAspectRatio(url) { return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img.width / img.height); img.onerror = reject; img.src = url; }); },
         showEventCG(url, ownerId) { if (this.elements.eventCG) { this.elements.eventCG.dataset.ownerId = ownerId; this.elements.eventCG.src = url; this.elements.eventCG.classList.add('visible'); } },
         hideEventCG(ownerId) { if (this.elements.eventCG && this.elements.eventCG.dataset.ownerId === ownerId) { this.elements.eventCG.classList.remove('visible'); this.elements.eventCG.dataset.ownerId = ''; setTimeout(() => { if (!this.elements.eventCG.classList.contains('visible')) this.elements.eventCG.src = ''; }, 500); } },
         clearAllMultiCharacters() { if (this.elements.eventCG.classList.contains('visible')) { this.hideEventCG(this.elements.eventCG.dataset.ownerId); } this.activeCharacters.forEach(char => { if (char.element) char.element.remove(); }); this.activeCharacters = []; },
+
+        // 로딩 아이콘을 켜고 끄는 함수입니다.
+        // show가 true면 보이고(block), false면 숨깁니다(none).
+        toggleLoadingIndicator(show) {
+            const indicator = document.getElementById(DOM_IDS.LOADING_INDICATOR);
+            if (indicator) {
+                indicator.style.display = show ? 'block' : 'none';
+            }
+        },
         toggleUiEditMode(enable) {
             const targets = [this.elements.dialogueBox, this.elements.statusWindow, this.elements.charContainer, this.elements.statusToggle];
             const editButton = document.getElementById('vn-edit-ui-button');
@@ -680,6 +842,42 @@
         },
         updateDialogueBox(character, text, isAction, typeCallback) { const { charName, dialogueText } = this.elements; if (!charName || !dialogueText) return; if (character) { charName.textContent = character; charName.style.display = 'inline-block'; } else { charName.style.display = 'none'; } dialogueText.className = isAction ? 'action-text' : ''; typeCallback(dialogueText, text); },
         getDialogueTextElement() { return this.elements.dialogueText; }
+            ,createLogModal() {
+        const modalHTML = `
+            <div id="${DOM_IDS.LOG_MODAL}" class="vn-log-modal-overlay">
+                <div class="vn-log-modal-content">
+                    <div class="vn-log-modal-header">
+                        <h2 class="vn-log-modal-title">대화 로그</h2>
+                        <span id="vn-log-modal-close" class="vn-log-modal-close">&times;</span>
+                    </div>
+                    <div id="vn-log-modal-body" class="vn-log-modal-body">
+                        <!-- 로그 내용이 여기에 동적으로 삽입됩니다. -->
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        const modal = document.getElementById(DOM_IDS.LOG_MODAL);
+        document.getElementById('vn-log-modal-close').addEventListener('click', () => this.toggleLogModal(false));
+        modal.addEventListener('click', (e) => {
+            if (e.target.id === DOM_IDS.LOG_MODAL) this.toggleLogModal(false);
+        });
+    },
+
+    toggleLogModal(show) {
+        const modal = document.getElementById(DOM_IDS.LOG_MODAL);
+        if (!modal) return;
+
+        if (show) {
+            const body = document.getElementById('vn-log-modal-body');
+            body.innerHTML = LogManager.render();
+            modal.style.display = 'flex';
+            // 모달을 연 후 스크롤을 맨 아래로 이동
+            setTimeout(() => { body.scrollTop = body.scrollHeight; }, 0);
+        } else {
+            modal.style.display = 'none';
+        }
+    }
     };
 
 // --- 데이터 패쳐 및 전역 로직 ---
@@ -687,8 +885,13 @@
     function extractCookie(key) { const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`)); return e ? decodeURIComponent(e[1]) : null; }
     async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } }
     class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
-    let lastMessageId = null, isChecking = false, pollingInterval = null, isEngineActive = false;
+    let lastMessageId = null, isChecking = false, isEngineActive = false;
+    let pollingTimer = null, uiObserver = null;
 
+// '생성 중지' 버튼(네모 아이콘)의 SVG 경로
+    const UI_SELECTORS = {
+        GENERATING_BTN: 'button svg path[d="M6 6h12v12H6Z"]'
+};
     function getChatInfoFromUrl() {
         const pathname = window.location.pathname;
         const idPattern = /([a-f0-9]{24})/;
@@ -701,6 +904,56 @@
         if (match) return { id: match[1], type: 'chat' };
         return null;
     }
+    async function adaptivePollingLoop() {
+    if (!isEngineActive) return;
+
+    // '생성 중' 버튼(멈춤 아이콘)이 있는지 확인
+    const generatingBtn = document.querySelector(UI_SELECTORS.GENERATING_BTN);
+    const isGenerating = !!generatingBtn;
+
+    UIManager.toggleLoadingIndicator(isGenerating);
+
+
+    // 생성 중이면 2초(고속), 아니면 10초(저속) 대기
+    const nextInterval = isGenerating ? 2000 : 10000;
+
+    // 메시지 확인 실행
+    if (isGenerating) {
+        await checkForNewMessages();
+    }
+
+    if (pollingTimer) clearTimeout(pollingTimer);
+    pollingTimer = setTimeout(adaptivePollingLoop, nextInterval);
+}
+
+// 2. 버튼 상태 변화를 실시간으로 감시하는 옵저버 함수
+    function startUiObserver() {
+    if (uiObserver) return;
+
+    const observerConfig = {
+        attributes: true,
+        childList: true,
+        subtree: true,
+        attributeFilter: ['disabled', 'cursor', 'class']
+    };
+
+    uiObserver = new MutationObserver((mutations) => {
+        const isMyOwnMutation = mutations.some(m =>
+            m.target.id === DOM_IDS.LOADING_INDICATOR ||
+           (m.target.parentElement && m.target.parentElement.id === DOM_IDS.DIALOGUE_BOX)
+            );
+            if (isMyOwnMutation) return;
+        const generatingBtn = document.querySelector(UI_SELECTORS.GENERATING_BTN);
+        // 생성 중 버튼이 갑자기 나타나면 즉시 루프를 재실행 (반응속도 향상)
+        if (generatingBtn && pollingTimer) {
+            clearTimeout(pollingTimer);
+            adaptivePollingLoop();
+        }
+    });
+
+    uiObserver.observe(document.body, observerConfig);
+}
+
     async function checkForNewMessages() {
         if (!isEngineActive || isChecking || (StageManager.isVisible && !StageManager.isFinished)) return;
         isChecking = true;
@@ -730,21 +983,31 @@
             isChecking = false;
         }
     }
-    function startRealtimeChecker() {
-        const chatInfo = getChatInfoFromUrl();
-        if (chatInfo) {
-            lastMessageId = null;
-            pollingInterval = setInterval(checkForNewMessages, 2500);
-            checkForNewMessages();
-        }
-    }
-    function stopRealtimeChecker() {
-        if (pollingInterval) clearInterval(pollingInterval);
-        pollingInterval = null;
+function startRealtimeChecker() {
+    const chatInfo = getChatInfoFromUrl();
+    if (chatInfo) {
         lastMessageId = null;
-        isChecking = false;
-        StageManager.hide();
+        startUiObserver(); // [추가] 감시자 시작
+        adaptivePollingLoop(); // [추가] 스마트 루프 시작
     }
+}
+
+function stopRealtimeChecker() {
+    if (pollingTimer) clearTimeout(pollingTimer); // [변경] interval -> timeout
+    pollingTimer = null;
+
+    // [추가] 옵저버 해제
+    if (uiObserver) {
+        uiObserver.disconnect();
+        uiObserver = null;
+    }
+
+    UIManager.toggleLoadingIndicator(false);
+
+    lastMessageId = null;
+    isChecking = false;
+    StageManager.hide();
+}
     function toggleVNEngine() {
         isEngineActive = !isEngineActive;
         const button = document.getElementById(DOM_IDS.START_BUTTON);
