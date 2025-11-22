@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Visual Novel Engine V1_mobile
+// @name         Visual Novel Engine V2_mobile
 // @namespace    http://tampermonkey.net/
-// @version      1.2-mobile-beta
-// @description  모바일 UI 편집 기능 및 버튼 터치 문제를 모두 수정한 최종 안정화 버전입니다.
-// @author       You & AI Assistant
+// @version      2.0-mobile-beta
+// @description  향상된 몰입감을 위한 비주얼 노벨 UI 스크립트의 모바일 버전 입니다.
+// @author       agetion(c3ak)
 // @match        *://crack.wrtn.ai/*
 // @grant        GM_addStyle
 // @run-at       document-idle
@@ -133,9 +133,21 @@
         display: flex;
         justify-content: center;
         align-items: flex-end;
-        /* left 속성에 애니메이션 추가 */
-        transition: opacity 0.4s, transform 0.4s, left 0.4s ease-in-out;
-        }
+        /* 애니메이션 효과 추가 (밝기, 크기, 위치 변화) */
+        transition: opacity 0.4s, transform 0.4s, left 0.4s ease-in-out, filter 0.4s ease-in-out;
+        transform-origin: bottom center;
+            }
+            /* 말하는 중: 약간 커지고 밝아짐, 제일 앞으로 나옴 */
+            .vn-character-slot.speaking {
+                transform: scale(1.05);
+                z-index: 10;
+            }
+            /* 듣는 중: 약간 작아지고 어두워짐 */
+            .vn-character-slot.listening {
+                transform: scale(0.95);
+                filter: brightness(0.6);
+                z-index: 1;
+            }
         .vn-character-cg {
         max-width: 110%;
         max-height: 100%;
@@ -308,30 +320,66 @@
         cueSheet: [], currentIndex: -1, firstTextCueIndex: -1, isTyping: false, typingTimer: null, isVisible: false, isFinished: true,
         start(rawText) {
             UIManager.hideBackButton();
+
+            // 1. 텍스트 파싱
             let parsedCues = this.parseCueSheet(rawText);
-            if (SettingsManager.settings.characterMode === 'multi') {
-                const hasCharacterUpdate = parsedCues.some(cue => cue.type === 'character_update' && cue.url !== 'off');
-                if (hasCharacterUpdate) {
-                    const previousCharacterIds = UIManager.activeCharacters.map(char => char.id);
-                    const newCueCharacterIds = new Set();
-                    parsedCues.forEach(cue => {
-                        if (cue.type === 'character_update' && cue.url !== 'off') {
-                            const charInfo = UIManager.parseCharacterInfoFromUrl(cue.url);
-                            if (charInfo) newCueCharacterIds.add(charInfo.id);
-                        }
-                    });
-                    const charactersToRemove = previousCharacterIds.filter(id => !newCueCharacterIds.has(id));
-                    charactersToRemove.forEach(id => {
-                        parsedCues.unshift({ type: 'character_update', url: 'off', characterId: id });
-                    });
+
+            // 2. [중요] 모든 모드에서 URL을 검사해 배경과 캐릭터를 올바르게 교정합니다.
+            parsedCues.forEach(cue => {
+                if (cue.url && cue.url !== 'off') {
+                    // URL에 '/g/'가 있으면 무조건 배경 이미지로 변경
+                    if (cue.url.includes('/g/')) {
+                        cue.type = 'background_image';
+                    }
+                    // URL에 '/c/'가 있으면 캐릭터로 변경
+                    else if (cue.url.includes('/c/')) {
+                        cue.type = 'character_update';
+                    }
                 }
+            });
+
+            // 3. 다중 모드일 경우에만 자동 퇴장 로직 수행
+            if (SettingsManager.settings.characterMode === 'multi') {
+                const previousCharacterIds = UIManager.activeCharacters.map(char => char.id);
+                const newCueCharacterIds = new Set();
+
+                parsedCues.forEach(cue => {
+                    if (cue.type === 'character_update' && cue.url !== 'off') {
+                        const charInfo = UIManager.parseCharacterInfoFromUrl(cue.url);
+                        if (charInfo) newCueCharacterIds.add(charInfo.id);
+                    }
+                });
+
+                const charactersToRemove = previousCharacterIds.filter(id => !newCueCharacterIds.has(id));
+                charactersToRemove.forEach(id => {
+                    parsedCues.unshift({ type: 'character_update', url: 'off', characterId: id });
+                });
             }
+
             this.cueSheet = parsedCues;
+
             this.firstTextCueIndex = this.cueSheet.findIndex(c => c.type === 'dialogue' || c.type === 'action');
             if (this.cueSheet.length === 0) { this.isFinished = true; return; }
-            UIManager.showAll(); UIManager.applyCustomBackground(); const bgCue = this.cueSheet.find(c => c.type === 'background_image'); if (bgCue) UIManager.updateBackgroundImage(bgCue.url);
-            const statusCue = this.cueSheet.find(c => c.type === 'status_window'); if(statusCue) UIManager.updateStatusWindow(statusCue.content);
-            this.currentIndex = -1; this.isVisible = true; this.isFinished = false; this.next();
+
+            UIManager.showAll();
+            UIManager.applyCustomBackground();
+
+            const bgCue = this.cueSheet.find(c => c.type === 'background_image');
+            if (bgCue) {
+                UIManager.updateBackgroundImage(bgCue.url);
+                // 시작할 때 배경이 있으면 단일 캐릭터 숨김
+                if (SettingsManager.settings.characterMode !== 'multi') {
+                    UIManager.updateSingleCharacter('off');
+                }
+            }
+
+            const statusCue = this.cueSheet.find(c => c.type === 'status_window');
+            if(statusCue) UIManager.updateStatusWindow(statusCue.content);
+
+            this.currentIndex = -1;
+            this.isVisible = true;
+            this.isFinished = false;
+            this.next();
         },
         next() { if (this.isTyping) { this.skipTyping(); return; } this.currentIndex++; if (this.currentIndex >= this.cueSheet.length) { this.isFinished = true; return; } this.processCue(this.cueSheet[this.currentIndex]); if (this.firstTextCueIndex !== -1 && this.currentIndex >= this.firstTextCueIndex) { UIManager.showBackButton(); } },
         previous() { if (this.isTyping) this.skipTyping(); if (this.currentIndex <= this.firstTextCueIndex) return; for (let i = this.currentIndex - 1; i >= 0; i--) { const cue = this.cueSheet[i]; if (cue.type === 'dialogue' || cue.type === 'action') { this.currentIndex = i; this.processCue(cue); if (this.currentIndex < this.firstTextCueIndex) UIManager.hideBackButton(); return; } } },
@@ -341,14 +389,33 @@
         skipTyping() { clearInterval(this.typingTimer); this.isTyping = false; const dialogueElement = UIManager.getDialogueTextElement(); if (dialogueElement) dialogueElement.classList.remove('typing-effect'); const cue = this.cueSheet[this.currentIndex]; if (cue && (cue.type === 'action' || cue.type === 'dialogue')) { dialogueElement.innerHTML = this.formatText(cue.content).replace(/\n/g, '<br>'); } },
         async processCue(cue) {
             switch (cue.type) {
-                case 'character_update': await UIManager.updateCharacter(cue.url, cue.characterId); this.next(); break;
-                case 'background_image': UIManager.updateBackgroundImage(cue.url); this.next(); break;
+                case 'character_update':
+                    await UIManager.updateCharacter(cue.url, cue.characterId);
+                    this.next();
+                    break;
+                case 'background_image':
+                    UIManager.updateBackgroundImage(cue.url);
+                    // 배경 변경 시 단일 모드 캐릭터 숨김
+                    if (SettingsManager.settings.characterMode !== 'multi') {
+                        UIManager.updateSingleCharacter('off');
+                    }
+                    this.next();
+                    break;
                 case 'action':
-                LogManager.add(null, cue.content); // ★ 추가
-                UIManager.updateDialogueBox(null, cue.content, true, (el, text) => this.type(el, text));
-                break;
-                case 'dialogue': LogManager.add(cue.character, cue.content); UIManager.updateDialogueBox(cue.character, cue.content, false, (el, text) => this.type(el, text)); break;
-                case 'status_window': this.next(); break;
+                    LogManager.add(null, cue.content);
+                    // 나레이션: 아무도 강조하지 않음
+                    UIManager.highlightSpeaker(null);
+                    UIManager.updateDialogueBox(null, cue.content, true, (el, text) => this.type(el, text));
+                    break;
+                case 'dialogue':
+                    LogManager.add(cue.character, cue.content);
+                    // 대사: 말하는 사람 강조 (스마트 매핑)
+                    UIManager.highlightSpeaker(cue.character);
+                    UIManager.updateDialogueBox(cue.character, cue.content, false, (el, text) => this.type(el, text));
+                    break;
+                case 'status_window':
+                    this.next();
+                    break;
             }
         },
         parsers: [
@@ -476,7 +543,8 @@
 
     // --- UI 관리자 ---
     const UIManager = {
-        elements: {}, activeCharacters: [], dragInfo: {}, resizeInfo: {},
+        elements: {}, activeCharacters: [], dragInfo: {}, resizeInfo: {}, characterMap: {},
+    lastUpdatedCharId: null,
 
         getEventCoords(e) {
             if (e.touches && e.touches.length > 0) { return e.touches[0]; }
@@ -645,6 +713,7 @@
                 return;
             }
             const charInfo = this.parseCharacterInfoFromUrl(url); if (!charInfo) return;
+            this.lastUpdatedCharId = charInfo.id;
             const aspectRatio = await this.getImageAspectRatio(url).catch(() => 1); const newMode = aspectRatio > 1.2 ? 'event' : 'standing';
             const existingChar = this.activeCharacters.find(char => char.id === charInfo.id);
             if (existingChar) {
@@ -843,8 +912,57 @@
             }
         },
         updateDialogueBox(character, text, isAction, typeCallback) { const { charName, dialogueText } = this.elements; if (!charName || !dialogueText) return; if (character) { charName.textContent = character; charName.style.display = 'inline-block'; } else { charName.style.display = 'none'; } dialogueText.className = isAction ? 'action-text' : ''; typeCallback(dialogueText, text); },
-        getDialogueTextElement() { return this.elements.dialogueText; }
-            ,createLogModal() {
+        getDialogueTextElement() { return this.elements.dialogueText; },
+
+        highlightSpeaker(speakerName) {
+            if (SettingsManager.settings.characterMode !== 'multi') return;
+
+            // 1. 나레이션(이름 없음)일 때: 모두 어둡게 처리
+            if (!speakerName) {
+                this.activeCharacters.forEach(char => {
+                    if (char.element) {
+                        char.element.classList.remove('speaking');
+                        char.element.classList.add('listening');
+                    }
+                });
+                return;
+            }
+
+            const targetName = speakerName.trim();
+            let targetId = this.characterMap[targetName];
+
+            // 매핑 정보가 없고, 방금 등장한 캐릭터가 있다면 연결(학습)
+            if (!targetId && this.lastUpdatedCharId) {
+                this.characterMap[targetName] = this.lastUpdatedCharId;
+                targetId = this.lastUpdatedCharId;
+            }
+
+            this.activeCharacters.forEach(char => {
+                if (!char.element) return;
+
+                // 1순위: 학습된 ID와 일치하는가?
+                let isMatch = (char.id === targetId);
+
+                // 2순위: 학습된 게 없으면 이름 포함 여부로 확인
+                if (!targetId) {
+                    const charIdLower = char.id.toLowerCase();
+                    const nameLower = targetName.toLowerCase().replace(/\s+/g, '');
+                    if (charIdLower.includes(nameLower) || nameLower.includes(charIdLower)) {
+                        isMatch = true;
+                        this.characterMap[targetName] = char.id;
+                    }
+                }
+
+                if (isMatch) {
+                    char.element.classList.add('speaking');
+                    char.element.classList.remove('listening');
+                } else {
+                    char.element.classList.add('listening');
+                    char.element.classList.remove('speaking');
+                }
+            });
+        },
+        createLogModal() {
         const modalHTML = `
             <div id="${DOM_IDS.LOG_MODAL}" class="vn-log-modal-overlay">
                 <div class="vn-log-modal-content">
