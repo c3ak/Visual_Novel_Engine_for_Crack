@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Visual Novel Engine V2_mobile
+// @name         Visual Novel Engine V1_mobile
 // @namespace    http://tampermonkey.net/
-// @version      2.0-mobile-beta
+// @version      1.0-mobile-beta
 // @description  향상된 몰입감을 위한 비주얼 노벨 UI 스크립트의 모바일 버전 입니다.
 // @author       agetion(c3ak)
 // @match        *://crack.wrtn.ai/*
