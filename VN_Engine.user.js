@@ -154,14 +154,94 @@
                 pointer-events: auto;
             }
             #${DOM_IDS.INPUT_BUTTON}:hover { background-color: #1765c7; }
-            .vn-input-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 100001; justify-content: center; align-items: center; }
-            .vn-input-modal-content { background-color: #2c2c2c; padding: 20px; border-radius: 10px; width: 400px; max-width: 90%; box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px; }
-            .vn-input-modal-title { margin: 0; color: white; font-size: 1.2em; font-weight: bold; }
-            .vn-modal-textarea { width: 100%; height: 100px; box-sizing: border-box; padding: 10px; background-color: #444; color: white; border: 1px solid #666; border-radius: 4px; resize: none; font-size: 1em; font-family: inherit; }
-            .vn-modal-textarea:focus { outline: 2px solid #1a73e8; }
-            .vn-input-modal-buttons { display: flex; justify-content: flex-end; gap: 10px; }
-            .vn-modal-button-cancel { background-color: #555; color: white; border: none; border-radius: 5px; padding: 8px 16px; cursor: pointer; font-weight: bold; }
-            .vn-modal-button-send { background-color: #1a73e8; color: white; border: none; border-radius: 5px; padding: 8px 16px; cursor: pointer; font-weight: bold; }
+            #${DOM_IDS.INPUT_MODAL} {
+                display: none; /* JS로 켜고 끔 */
+                position: absolute;
+
+                /* 핵심: 대화창 바로 위에 붙이기 */
+                bottom: 100%;
+                left: 0;
+                width: 100%;
+
+                /* 디자인: 어두운 회색 바 */
+                background-color: #2c2c2c;
+                border: 1px solid #555;
+                border-bottom: none; /* 대화창과 연결된 느낌을 위해 아래 테두리 제거 */
+                border-radius: 8px 8px 0 0; /* 위쪽 모서리만 둥글게 */
+                padding: 8px;
+                box-sizing: border-box;
+                z-index: 20; /* 입력 버튼보다 아래, 캐릭터보다는 위 */
+
+                /* 내용물 가로 정렬 */
+                flex-direction: row;
+                align-items: center;
+                gap: 10px;
+                box-shadow: 0 -4px 10px rgba(0,0,0,0.2);
+            }
+
+            /* 기존 클래스 재활용: 내부 컨텐츠 정렬 */
+            .vn-input-modal-content {
+                display: flex;
+                flex-direction: row; /* 가로로 배치 */
+                width: 100%;
+                gap: 10px;
+                background: transparent; /* 배경 투명하게 (부모 색 따름) */
+                box-shadow: none;
+                padding: 0;
+            }
+
+            /* 제목은 바 형태에선 필요 없으니 숨김 */
+            .vn-input-modal-title { display: none; }
+
+            /* [수정됨 3] 텍스트 입력칸 디자인 */
+            .vn-modal-textarea {
+                flex-grow: 1; /* 남은 공간 꽉 채우기 */
+                height: 36px; /* 높이 고정 (한 줄 느낌) */
+                box-sizing: border-box;
+                padding: 8px 10px;
+                background-color: #444;
+                color: white;
+                border: 1px solid #666;
+                border-radius: 4px;
+                resize: none; /* 크기 조절 끄기 */
+                font-size: 0.95em;
+                font-family: inherit;
+                line-height: 1.2;
+            }
+            .vn-modal-textarea:focus { outline: 1px solid #1a73e8; }
+
+            /* 버튼 그룹 */
+            .vn-input-modal-buttons {
+                display: flex;
+                gap: 5px;
+                flex-shrink: 0; /* 공간 좁아져도 버튼 크기 유지 */
+            }
+
+            /* 버튼 디자인 */
+            .vn-modal-button-cancel {
+                background-color: #555;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 0 12px;
+                height: 36px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            .vn-modal-button-send {
+                background-color: #1a73e8;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 0 15px;
+                height: 36px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            .vn-modal-button-send:hover { background-color: #1765c7; }
+            .vn-modal-button-cancel:hover { background-color: #666; }
 
             #${DOM_IDS.LOG_BUTTON} {
             position: absolute;
@@ -601,34 +681,66 @@ start(rawText) {
     });
 },
 
-        createInputModal() {
-            const modalHTML = `
-                <div id="${DOM_IDS.INPUT_MODAL}" class="vn-input-modal-overlay">
-                    <div class="vn-input-modal-content">
-                        <h3 class="vn-input-modal-title">메시지 입력</h3>
-                        <textarea id="vn-modal-textarea" class="vn-modal-textarea" placeholder="내용을 입력하세요... (Ctrl+Enter: 전송)"></textarea>
-                        <div class="vn-input-modal-buttons">
-                            <button id="vn-modal-cancel" class="vn-modal-button-cancel">취소</button>
-                            <button id="vn-modal-send" class="vn-modal-button-send">전송</button>
-                        </div>
-                    </div>
-                </div>`;
-            document.body.insertAdjacentHTML('beforeend', modalHTML);
-            document.getElementById('vn-modal-send').addEventListener('click', () => this.sendMessage());
-            document.getElementById('vn-modal-cancel').addEventListener('click', () => this.toggleInputModal(false));
-            document.getElementById(DOM_IDS.INPUT_MODAL).addEventListener('click', (e) => {
-                if (e.target.id === DOM_IDS.INPUT_MODAL) this.toggleInputModal(false);
-            });
-            document.getElementById('vn-modal-textarea').addEventListener('keydown', (e) => {
-                if (e.ctrlKey && e.key === 'Enter') { this.sendMessage(); }
-            });
-        },
-        toggleInputModal(show) {
-            const modal = document.getElementById(DOM_IDS.INPUT_MODAL);
-            if (!modal) return;
-            modal.style.display = show ? 'flex' : 'none';
-            if (show) { const t = document.getElementById('vn-modal-textarea'); t.value = ''; t.focus(); }
-        },
+createInputModal() {
+    // 혹시라도 이전에 만들어진 모달이 남아있으면 삭제 (중복 방지)
+    const oldModal = document.getElementById(DOM_IDS.INPUT_MODAL);
+    if (oldModal) oldModal.remove();
+
+    // 입력바 HTML 생성
+    const modalHTML = `
+        <div id="${DOM_IDS.INPUT_MODAL}" style="display: none;"> <!-- 초기 상태 none 강제 -->
+            <div class="vn-input-modal-content">
+                <textarea id="vn-modal-textarea" class="vn-modal-textarea" placeholder="대화 내용을 입력하세요 (Ctrl+Enter)"></textarea>
+                <div class="vn-input-modal-buttons">
+                    <button id="vn-modal-send" class="vn-modal-button-send">전송</button>
+                    <button id="vn-modal-cancel" class="vn-modal-button-cancel">닫기</button>
+                </div>
+            </div>
+        </div>`;
+
+    // [핵심] 대화창(dialogueBox) 안에 HTML을 추가
+    if (this.elements.dialogueBox) {
+        this.elements.dialogueBox.insertAdjacentHTML('beforeend', modalHTML);
+
+        // 이벤트 리스너 연결
+        document.getElementById('vn-modal-send').onclick = (e) => { e.stopPropagation(); this.sendMessage(); };
+        document.getElementById('vn-modal-cancel').onclick = (e) => { e.stopPropagation(); this.toggleInputModal(false); };
+
+        // 텍스트 영역 키보드 이벤트 (Ctrl+Enter)
+        const textArea = document.getElementById('vn-modal-textarea');
+        textArea.onkeydown = (e) => {
+            e.stopPropagation(); // 키 입력이 VN 엔진의 다른 단축키와 겹치지 않게 함
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                this.sendMessage();
+            }
+        };
+        // 입력창 클릭 시 대화가 진행되지 않도록 이벤트 전파 막기
+        textArea.onclick = (e) => e.stopPropagation();
+    } else {
+        console.error("VN Engine Error: 대화창을 찾을 수 없어 입력창을 생성하지 못했습니다.");
+    }
+},
+
+toggleInputModal(show) {
+    const modal = document.getElementById(DOM_IDS.INPUT_MODAL);
+    if (!modal) {
+        // 모달이 없으면 다시 생성 시도
+        this.createInputModal();
+        return;
+    }
+
+    if (show) {
+        modal.style.display = 'flex'; // 보이게 설정
+        const t = document.getElementById('vn-modal-textarea');
+        if (t) {
+            t.value = '';
+            t.focus();
+        }
+    } else {
+        modal.style.display = 'none'; // 숨김
+    }
+},
         sendMessage() {
             const textarea = document.getElementById('vn-modal-textarea');
             const message = textarea.value.trim();
@@ -705,6 +817,8 @@ start(rawText) {
     let lastMessageId = null, isChecking = false, isEngineActive = false;
     let generationStopTime = null;
     let pollingTimer = null, uiObserver = null;
+    let stopDelayTimer = null;
+    let isHighSpeedMode = false;
 
     // ★ 수정됨: 사용자가 지적한 'cursor="not-allowed"' 상태를 감지합니다.
     const UI_SELECTORS = {
@@ -715,34 +829,44 @@ start(rawText) {
     function getChatInfoFromUrl() { const pathname = window.location.pathname; const idPattern = /([a-f0-9]{24})/; let match; match = pathname.match(new RegExp("/episodes/" + idPattern.source)); if (match) return { id: match[1], type: 'episode' }; match = pathname.match(new RegExp("/chats/" + idPattern.source)); if (match) return { id: match[1], type: 'chat' }; match = pathname.match(new RegExp("/c/" + idPattern.source)); if (match) return { id: match[1], type: 'chat' }; return null; }
 
     // --- 스마트 폴링 로직 (핵심) ---
-    async function adaptivePollingLoop() {
+async function adaptivePollingLoop() {
     if (!isEngineActive) return;
 
-    // 1. "생성 중인" 버튼 (cursor: pointer)을 찾습니다. (수정)
-    const generatingBtn = document.querySelector(UI_SELECTORS.GENERATING_BTN);
+    // 1. 현재 버튼이 있는지 확인
+    const hasButton = !!document.querySelector(UI_SELECTORS.GENERATING_BTN);
 
-    // 2. 해당 버튼이 존재하면 'isGenerating'을 true로 설정합니다. (수정)
-    const isGenerating = !!generatingBtn;
+    if (hasButton) {
+        // [상황 A] 버튼이 있음 -> 무조건 고속 모드 유지
+        isHighSpeedMode = true;
 
-    // 3. 생성 중일 때만 로딩 인디케이터를 켭니다. (수정)
-    UIManager.toggleLoadingIndicator(isGenerating);
-
-    let nextInterval;
-
-    // 4. '생성 중' 상태에 따라 폴링 주기를 결정합니다. (로직은 그대로, 대상만 바뀜)
-    if (isGenerating) {
-        // 상태: 답변 생성 중 ('pointer' 커서 버튼 감지) -> 고속 모드
-        // console.log("상태: 답변 생성 중 -> 고속 모드");
-        await checkForNewMessages();
-        nextInterval = 2000;
-    } else {
-        // 상태: 대기 중 ('pointer' 커서 버튼 없음) -> 절전 모드
-        // console.log("상태: 대기 중 -> 절전 모드");
-        nextInterval = 10000;
+        // 혹시 "끄려고 예약해둔 타이머"가 있다면 취소 (다시 생성 시작했으므로)
+        if (stopDelayTimer) {
+            clearTimeout(stopDelayTimer);
+            stopDelayTimer = null;
+        }
+    } else if (isHighSpeedMode && !stopDelayTimer) {
+        // [상황 B] 버튼이 사라졌는데, 아직 고속 모드임 -> "2초 뒤에 꺼라" 예약
+        stopDelayTimer = setTimeout(() => {
+            isHighSpeedMode = false; // 2초 뒤에 비로소 꺼짐
+            stopDelayTimer = null;
+        }, 1000);
     }
 
-    if (pollingTimer) clearTimeout(pollingTimer);
-    pollingTimer = setTimeout(adaptivePollingLoop, nextInterval);
+    // --- 실제 동작 (상태에 따라 행동) ---
+
+    // 로딩 인디케이터는 고속 모드인 동안 계속 켜둠 (유예 시간 포함)
+    UIManager.toggleLoadingIndicator(isHighSpeedMode);
+
+    if (isHighSpeedMode) {
+        // [고속 모드] 2초 간격 (유예 시간 동안은 이쪽으로 들어옴)
+        await checkForNewMessages();
+        if (pollingTimer) clearTimeout(pollingTimer);
+        pollingTimer = setTimeout(adaptivePollingLoop, 2000);
+    } else {
+        // [절전 모드] 10초 간격
+        if (pollingTimer) clearTimeout(pollingTimer);
+        pollingTimer = setTimeout(adaptivePollingLoop, 10000);
+    }
 }
     // 버튼의 상태 변화(활성 <-> 비활성)를 감지하는 감시자
 
