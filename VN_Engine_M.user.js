@@ -1007,6 +1007,8 @@
     class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
     let lastMessageId = null, isChecking = false, isEngineActive = false;
     let pollingTimer = null, uiObserver = null;
+    let stopDelayTimer = null;
+    let isHighSpeedMode = false;
 
 // '생성 중지' 버튼(네모 아이콘)의 SVG 경로
     const UI_SELECTORS = {
@@ -1024,26 +1026,44 @@
         if (match) return { id: match[1], type: 'chat' };
         return null;
     }
-    async function adaptivePollingLoop() {
+async function adaptivePollingLoop() {
     if (!isEngineActive) return;
 
-    // '생성 중' 버튼(멈춤 아이콘)이 있는지 확인
-    const generatingBtn = document.querySelector(UI_SELECTORS.GENERATING_BTN);
-    const isGenerating = !!generatingBtn;
+    // 1. 현재 버튼이 있는지 확인
+    const hasButton = !!document.querySelector(UI_SELECTORS.GENERATING_BTN);
 
-    UIManager.toggleLoadingIndicator(isGenerating);
+    if (hasButton) {
+        // [상황 A] 버튼이 있음 -> 무조건 고속 모드 유지
+        isHighSpeedMode = true;
 
-
-    // 생성 중이면 2초(고속), 아니면 10초(저속) 대기
-    const nextInterval = isGenerating ? 2000 : 10000;
-
-    // 메시지 확인 실행
-    if (isGenerating) {
-        await checkForNewMessages();
+        // 혹시 "끄려고 예약해둔 타이머"가 있다면 취소 (다시 생성 시작했으므로)
+        if (stopDelayTimer) {
+            clearTimeout(stopDelayTimer);
+            stopDelayTimer = null;
+        }
+    } else if (isHighSpeedMode && !stopDelayTimer) {
+        // [상황 B] 버튼이 사라졌는데, 아직 고속 모드임 -> "2초 뒤에 꺼라" 예약
+        stopDelayTimer = setTimeout(() => {
+            isHighSpeedMode = false; // 2초 뒤에 비로소 꺼짐
+            stopDelayTimer = null;
+        }, 2000);
     }
 
-    if (pollingTimer) clearTimeout(pollingTimer);
-    pollingTimer = setTimeout(adaptivePollingLoop, nextInterval);
+    // --- 실제 동작 (상태에 따라 행동) ---
+
+    // 로딩 인디케이터는 고속 모드인 동안 계속 켜둠 (유예 시간 포함)
+    UIManager.toggleLoadingIndicator(isHighSpeedMode);
+
+    if (isHighSpeedMode) {
+        // [고속 모드] 2초 간격 (유예 시간 동안은 이쪽으로 들어옴)
+        await checkForNewMessages();
+        if (pollingTimer) clearTimeout(pollingTimer);
+        pollingTimer = setTimeout(adaptivePollingLoop, 2000);
+    } else {
+        // [절전 모드] 10초 간격
+        if (pollingTimer) clearTimeout(pollingTimer);
+        pollingTimer = setTimeout(adaptivePollingLoop, 10000);
+    }
 }
 
 // 2. 버튼 상태 변화를 실시간으로 감시하는 옵저버 함수
