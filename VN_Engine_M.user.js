@@ -1046,7 +1046,7 @@ async function adaptivePollingLoop() {
         stopDelayTimer = setTimeout(() => {
             isHighSpeedMode = false; // 2초 뒤에 비로소 꺼짐
             stopDelayTimer = null;
-        }, 2000);
+        }, 1000);
     }
 
     // --- 실제 동작 (상태에 따라 행동) ---
