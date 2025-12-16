@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Visual Novel Engine V1.1_mobile
+// @name         Visual Novel Engine V2.0_mobile
 // @namespace    http://tampermonkey.net/
-// @version      1.1-mobile-beta
+// @version      2.0-mobile-beta
 // @description  향상된 몰입감을 위한 비주얼 노벨 UI 스크립트의 모바일 버전 입니다.
 // @author       agetion(c3ak)
 // @match        *://crack.wrtn.ai/*
@@ -26,8 +26,328 @@
     };
     const ANIMATION_TYPES = {
         'shake-vertical': '세로 흔들기', 'shake-horizontal': '가로 흔들기', 'flash': '반짝이기',
-        'bounce': '통통 튀기', 'vibrate': '진동하기'
+        'bounce': '통통 튀기', 'vibrate': '진동하기', 'fall-left': '왼쪽으로 털썩'
     };
+
+    // [신규] 오디오 관리자
+    const AudioManager = {
+        currentAudio: null,
+        currentUrl: null,
+        rules: [],
+        isUnlocked: false, // 오디오 잠금 해제 여부 확인용
+
+        loadRules(rules) { this.rules = rules || []; },
+
+        // ★ [핵심] 모바일 브라우저 오디오 잠금 해제 함수
+        unlock() {
+            if (this.isUnlocked) return;
+
+            // 0.1초짜리 빈 소리를 만들어서 재생 시도
+            const dummy = new Audio();
+            // 아주 짧은 무음 데이터 URI
+            dummy.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAGZGF0YQQAAAAAAA==';
+
+            dummy.play().then(() => {
+                this.isUnlocked = true;
+                console.log("VN Engine: 모바일 오디오 시스템 잠금 해제됨");
+            }).catch(e => {
+                console.log("VN Engine: 오디오 잠금 해제 실패 (아직 터치 안함)", e);
+            });
+        },
+
+        updateVolume() {
+            if (this.currentAudio && !this.currentAudio.paused) {
+                this.currentAudio.volume = SettingsManager.settings.globalVolume || 0.5;
+            }
+        },
+
+        checkAndPlay(imageUrl) {
+            if (!imageUrl || imageUrl === 'off') return;
+            const filename = imageUrl.substring(imageUrl.lastIndexOf('/') + 1);
+            const match = this.rules.find(rule => filename.includes(rule.trigger));
+
+            if (match) {
+                this.play(match.audioUrl);
+            }
+        },
+
+        play(url) {
+            // 이미 같은 노래가 재생 중이면 무시
+            if (this.currentUrl === url && this.currentAudio && !this.currentAudio.paused) return;
+
+            // 기존 노래 끄기
+            if (this.currentAudio) { this.fadeOutAndStop(this.currentAudio); }
+
+            this.currentUrl = url;
+            const newAudio = new Audio(url);
+            newAudio.loop = true;
+            newAudio.volume = 0;
+
+            // ★ 재생 시도
+            const playPromise = newAudio.play();
+
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    this.fadeIn(newAudio, SettingsManager.settings.globalVolume || 0.5);
+                    this.currentAudio = newAudio;
+                }).catch(e => {
+                    console.warn("BGM 재생 차단됨. (화면을 터치하면 해결될 수 있음)", e);
+                    // 차단되었을 경우, 다음 터치 이벤트를 기다렸다가 재생 시도하는 로직 추가 가능
+                });
+            }
+        },
+
+        fadeIn(audio, targetVol) {
+            let vol = 0;
+            const timer = setInterval(() => {
+                if (!audio || audio.paused) { clearInterval(timer); return; }
+                vol += 0.05;
+                if (vol >= targetVol) {
+                    audio.volume = targetVol;
+                    clearInterval(timer);
+                } else {
+                    audio.volume = vol;
+                }
+            }, 100);
+        },
+
+        fadeOutAndStop(audio) {
+            if (!audio) return;
+            let vol = audio.volume;
+            const timer = setInterval(() => {
+                vol -= 0.05;
+                if (vol <= 0) {
+                    audio.volume = 0;
+                    audio.pause();
+                    audio.currentTime = 0;
+                    clearInterval(timer);
+                } else {
+                    audio.volume = vol;
+                }
+            }, 100);
+        },
+
+        stopAll() {
+            if (this.currentAudio) {
+                this.fadeOutAndStop(this.currentAudio);
+                this.currentAudio = null;
+                this.currentUrl = null;
+            }
+        }
+    };
+
+    // [수정] URL 정보 추출 헬퍼 (강화됨)
+    function getCurrentTargetId() {
+        const path = window.location.pathname;
+        // 1순위: 작품 ID
+        const storyMatch = path.match(/\/stories\/([a-f0-9]{24})/);
+        if (storyMatch) return { id: storyMatch[1], type: 'story' };
+
+        // 2순위: 채팅방 ID
+        const chatMatch = path.match(/\/(?:chats|c)\/([a-f0-9]{24})/);
+        if (chatMatch) return { id: chatMatch[1], type: 'chat' };
+
+        return { id: 'manual', type: 'unknown' };
+    }
+    // [수정] 라이브러리 매니저 (완성형)
+    const LibraryManager = {
+        presets: [],
+        lastLoadedId: null, // 중복 로드 방지용
+
+        load() {
+            const data = localStorage.getItem('vnEngineLibrary');
+            try { this.presets = data ? JSON.parse(data) : []; } catch (e) { this.presets = []; }
+        },
+        save() {
+            localStorage.setItem('vnEngineLibrary', JSON.stringify(this.presets));
+            this.render();
+        },
+
+        // 카트리지 추가
+        addPreset(data, name = '', coverUrl = '') {
+            const target = getCurrentTargetId();
+            const finalName = name || `설정 ${new Date().toLocaleDateString()}`;
+
+            const newPreset = {
+                id: Date.now().toString(),
+                name: finalName,
+                storyId: target.id,
+                coverUrl: coverUrl,
+                data: {
+                    animations: data.settings?.animations || [],
+                    bgm: data.settings?.bgm || [],
+
+                    // [추가] 오프닝 데이터 저장
+                    opening: data.opening || ""
+                },
+                createdAt: new Date().toISOString()
+            };
+
+            // 목록 맨 앞에 추가
+            this.presets.unshift(newPreset);
+            this.save();
+            // 토스트 메시지 (모바일은 alert보다 이게 나음)
+            this.showToast(`💾 "${finalName}" 저장됨`);
+        },
+
+        deletePreset(id) {
+            if(confirm("이 설정을 삭제하시겠습니까?")) {
+                this.presets = this.presets.filter(p => p.id !== id);
+                this.save();
+            }
+        },
+
+        // 설정 적용 (수동/자동 공용)
+        _applyData(data) {
+            SettingsManager.settings.customAnimations = data.animations || [];
+            SettingsManager.settings.customBgmRules = data.bgm || [];
+
+            // [수정 시작] ---------------
+            // 오프닝 데이터 파싱 로직 (문자열 -> 배열 호환성 처리)
+            const rawOpening = data.opening;
+            let finalScripts = [];
+
+            if (Array.isArray(rawOpening)) {
+                // 1. 배열 형태 (신규 V3 포맷)
+                finalScripts = rawOpening;
+            } else if (typeof rawOpening === 'string' && rawOpening.trim() !== "") {
+                // 2. 문자열 형태 (구형 V1 포맷)
+                finalScripts = [{ title: "기본 오프닝", content: rawOpening }];
+            }
+            // 3. 없으면 빈 배열
+
+            SettingsManager.settings.openingScripts = finalScripts;
+            // [수정 끝] -----------------
+
+            SettingsManager.save();
+            // UI 및 엔진 갱신
+            SettingsManager.renderAnimationRules();
+            SettingsManager.renderBgmRules();
+            AudioManager.loadRules(SettingsManager.settings.customBgmRules);
+        },
+
+        // (수동) 로드 버튼 클릭 시
+        applyPreset(id) {
+            const preset = this.presets.find(p => p.id === id);
+            if (!preset) return;
+
+            if (confirm(`[${preset.name}] 설정을 불러올까요?`)) {
+                this._applyData(preset.data);
+                this.lastLoadedId = preset.storyId;
+                SettingsManager.close();
+                this.showToast(`💿 설정 로드 완료`);
+            }
+        },
+
+        // (자동) URL 변경 시 호출됨
+        checkAutoLoad() {
+            this.load(); // 최신 목록 불러오기
+            const target = getCurrentTargetId();
+            if (!target.id || target.id === 'manual') return;
+
+            // 이미 로드한 방이면 패스
+            if (this.lastLoadedId === target.id) return;
+
+            // 현재 방 ID와 일치하는 프리셋 찾기
+            const match = this.presets.find(p => p.storyId === target.id);
+
+            if (match) {
+                console.log(`VN Engine: Auto-loading preset for ${target.id}`);
+                this._applyData(match.data);
+                this.showToast(`🔄 저장된 설정 불러옴: "${match.name}"`);
+            } else {
+                // 저장된 게 없으면? -> 이전 방 설정이 남지 않게 초기화!
+                SettingsManager.settings.customAnimations = [];
+                SettingsManager.settings.customBgmRules = [];
+                SettingsManager.save();
+                SettingsManager.renderAnimationRules();
+                SettingsManager.renderBgmRules();
+                AudioManager.loadRules([]);
+                // this.showToast(` 새 방: 설정 초기화됨`);
+            }
+            this.lastLoadedId = target.id;
+        },
+
+        showToast(msg) {
+            let toast = document.getElementById('vn-toast');
+            if(!toast) {
+                toast = document.createElement('div');
+                toast.id = 'vn-toast';
+                toast.style.cssText = 'position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; z-index:200000; font-size:14px; opacity:0; transition:0.3s; pointer-events:none; border:1px solid #555;';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.style.opacity = 1;
+            setTimeout(() => { toast.style.opacity = 0; }, 2000);
+        },
+
+        render() {
+            const container = document.getElementById('vn-library-container');
+            if (!container) return;
+            if (this.presets.length === 0) {
+                container.innerHTML = '<div style="text-align:center; color:#888; padding:30px 0; font-size:13px;">저장된 카트리지가 없습니다.<br>현재 설정을 저장해보세요.</div>';
+                return;
+            }
+
+            let html = '<div class="vn-library-grid">';
+            this.presets.forEach(p => {
+                // 커버 이미지가 없으면 기본 그라데이션
+                const bgStyle = p.coverUrl ? `background-image: url('${p.coverUrl}');` : 'background: linear-gradient(135deg, #444, #222);';
+                const icon = p.coverUrl ? '' : '<div style="font-size:24px;">💿</div>';
+
+                html += `
+                    <div class="vn-cartridge">
+                        <div class="vn-cartridge-cover" style="${bgStyle}" data-action="load" data-id="${p.id}">
+                            ${icon}
+                            <div class="vn-cartridge-load-overlay">LOAD</div>
+                        </div>
+                        <div class="vn-cartridge-info">
+                            <div class="vn-cartridge-title">${p.name}</div>
+                            <div class="vn-cartridge-meta">${p.storyId.substring(0,6)}...</div>
+                            <button class="vn-btn-del" data-action="delete" data-id="${p.id}">삭제</button>
+                        </div>
+                    </div>`;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+    };
+    window.LibraryManager = LibraryManager; // 전역 접근 허용
+
+    // [신규] 세션 ID 추출 헬퍼 (오프닝 기록용)
+    function getCurrentSessionId() {
+        const path = window.location.pathname;
+        // 채팅방 ID (24자리)가 경로 맨 뒤에 있는지 확인
+        const match = path.match(/\/([a-f0-9]{24})$/);
+        return match ? match[1] : null;
+    }
+
+    // [신규] 오프닝 시청 기록 관리자
+    const OpeningHistoryManager = {
+        storageKey: 'vnOpeningHistory',
+        history: [],
+        load() {
+            try {
+                const data = localStorage.getItem(this.storageKey);
+                this.history = data ? JSON.parse(data) : [];
+            } catch (e) { this.history = []; }
+        },
+        save() { localStorage.setItem(this.storageKey, JSON.stringify(this.history)); },
+
+        hasSeen(sessionId) {
+            if (!sessionId) return false;
+            return this.history.includes(sessionId);
+        },
+        markAsSeen(sessionId) {
+            if (!sessionId) return;
+            if (!this.history.includes(sessionId)) {
+                this.history.push(sessionId);
+                this.save();
+                console.log(`VN Engine: 세션(${sessionId}) 오프닝 시청 기록 저장됨.`);
+            }
+        }
+    };
+    OpeningHistoryManager.load();
 
     // --- 설정 관리자 --- (변경 없음)
     const SettingsManager = {
@@ -36,41 +356,323 @@
             statusWindowPos: { top: '20px', right: '20px' },
             statusTogglePos: { top: '20px', right: '20px' },
             characterContainerPos: { bottom: '0px', left: '0px' },
-            backgroundPattern: '/g/', characterPattern: '/c/', clipRect: null, customBackgroundUrl: '', customAnimations: []
+            backgroundPattern: '/g/', characterPattern: '/c/', clipRect: null, customBackgroundUrl: '', customAnimations: [],
+            customBgmRules: [], // [추가됨]
+            openingScript: "",
+            globalVolume: 0.5, typingSpeed: 40,
+            openingScripts: []
         },
         settings: {},
         load() {
             const savedSettings = localStorage.getItem('vnEngineSettings');
             this.settings = savedSettings ? JSON.parse(savedSettings) : { ...this.defaults };
             for (const key in this.defaults) { if (!this.settings.hasOwnProperty(key)) { this.settings[key] = this.defaults[key]; } }
+            // [추가됨] 오디오 규칙 로드
+            if (this.settings.customBgmRules) AudioManager.loadRules(this.settings.customBgmRules);
         },
         save() { localStorage.setItem('vnEngineSettings', JSON.stringify(this.settings)); },
+
         createModal() {
             const animationOptions = Object.entries(ANIMATION_TYPES).map(([value, name]) => `<option value="${value}">${name}</option>`).join('');
-            const modalHTML = `<div id="${DOM_IDS.SETTINGS_MODAL}" style="display: none; position: fixed; z-index: 100000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);"><div class="vn-modal-content" style="background-color: #2c2c2c; margin: 5% auto; padding: 25px; border: 1px solid #888; width: 90%; max-width: 650px; border-radius: 10px; color: white; font-family: 'Pretendard', sans-serif; max-height: 90vh; overflow-y: auto;"><span id="vn-modal-close" style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span><h2 style="margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px;">VN 엔진 설정</h2><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">모드 선택 </label><input type="radio" id="vn-char-mode-single" name="characterMode" value="single"> <label for="vn-char-mode-single">범용 모드</label><br><input type="radio" id="vn-char-mode-multi" name="characterMode" value="multi"> <label for="vn-char-mode-multi">비주얼챗 모드 </label><br></div><div id="vn-custom-bg-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 배경 (범용 모드용)</label><input type="text" id="vn-custom-bg-url-input" class="vn-pattern-input" placeholder="https://..."></div><div id="vn-multi-mode-section" class="vn-setting-option" style="display: none; margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">URL 패턴 설정 (비주얼챗 모드 전용)</label><input type="text" id="vn-bg-pattern-input" class="vn-pattern-input" placeholder="배경 키워드"><input type="text" id="vn-char-pattern-input" class="vn-pattern-input" placeholder="캐릭터 키워드"></div><div id="vn-custom-anim-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 연출 (비주얼챗 모드 전용)</label><div class="vn-anim-rule-list-container" style="max-height: 150px; overflow-y: auto; background-color: #333; padding: 10px; border-radius: 5px; margin-bottom: 10px;"><ul id="vn-animation-rules-list" style="list-style: none; margin: 0; padding: 0;"></ul></div><div class="vn-anim-add-form" style="display: flex; gap: 10px; margin-bottom: 10px;"><input type="text" id="vn-anim-trigger-input" placeholder="이미지 파일명 포함 단어" class="vn-pattern-input" style="flex: 2;"><select id="vn-anim-type-select" class="vn-pattern-input" style="flex: 1;">${animationOptions}</select><button id="vn-add-anim-rule-btn" class="vn-modal-button">규칙 추가</button></div><div><button id="vn-export-anim-btn" class="vn-modal-button">내보내기</button><button id="vn-import-anim-btn" class="vn-modal-button">가져오기</button><input type="file" id="vn-import-anim-input" style="display:none;" accept=".json"></div></div><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">UI 위치 편집</label><button id="vn-edit-ui-button" class="vn-modal-button">편집 시작</button></div></div></div><style>.vn-modal-button { background-color: #555; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; } .vn-modal-button:hover { background-color: #666; } .vn-pattern-input { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 6px; background-color: #444; color: white; border: 1px solid #666; border-radius: 4px; }</style>`;
+
+            // 탭 구조가 적용된 새로운 모달 HTML
+            const modalHTML = `
+            <div id="${DOM_IDS.SETTINGS_MODAL}" style="display: none; position: fixed; z-index: 100000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); align-items: center; justify-content: center;">
+                <div class="vn-modal-content">
+                    <span id="vn-modal-close">&times;</span>
+
+                    <!-- 좌측 사이드바 탭 -->
+                    <div class="vn-settings-sidebar">
+                        <div class="vn-tab-btn active" data-tab="vn-tab-general">일반</div>
+                        <div class="vn-tab-btn" data-tab="vn-tab-system">환경</div>
+                        <div class="vn-tab-btn" data-tab="vn-tab-library">저장소</div>
+                    </div>
+
+                    <!-- 우측 컨텐츠 영역 -->
+                    <div class="vn-settings-body">
+                        <h2 style="margin-top:0; border-bottom:1px solid #444; padding-bottom:10px;">설정</h2>
+
+                        <!-- [탭 1] 일반 설정 -->
+                        <div id="vn-tab-general" class="vn-tab-content active">
+                            <div class="vn-setting-option">
+                                <label style="font-weight:bold;">모드 선택</label><br>
+                                <input type="radio" id="vn-m-single" name="characterMode" value="single"> <label for="vn-m-single">범용</label>
+                                <input type="radio" id="vn-m-multi" name="characterMode" value="multi" style="margin-left:10px;"> <label for="vn-m-multi">비주얼챗</label>
+                            </div>
+
+                            <div id="vn-custom-bg-section" class="vn-setting-option" style="display:none;">
+                                <label>배경 URL</label>
+                                <input type="text" id="vn-custom-bg-url-input" class="vn-pattern-input" placeholder="https://...">
+                            </div>
+
+                            <div id="vn-multi-mode-section" class="vn-setting-option" style="display:none;">
+                                <label>감지 패턴</label>
+                                <input type="text" id="vn-bg-pattern-input" class="vn-pattern-input" placeholder="배경 (/g/)">
+                                <input type="text" id="vn-char-pattern-input" class="vn-pattern-input" placeholder="캐릭터 (/c/)" style="margin-top:5px;">
+                            </div>
+
+                            <div id="vn-custom-anim-section" class="vn-setting-option" style="display:none;">
+                                <label>연출 규칙</label>
+                                <div class="vn-anim-rule-list-container">
+                                    <ul id="vn-animation-rules-list" style="padding-left:0; margin:0;"></ul>
+                                </div>
+                                <div style="display:flex; gap:5px; margin-top:5px;">
+                                    <input type="text" id="vn-anim-trigger-input" placeholder="키워드" class="vn-pattern-input">
+                                    <select id="vn-anim-type-select" class="vn-pattern-input" style="width:100px;">${animationOptions}</select>
+                                    <button id="vn-add-anim-rule-btn" class="vn-modal-button">추가</button>
+                                </div>
+                            </div>
+                            <!-- [추가] BGM 설정 섹션 -->
+                            <div class="vn-setting-option">
+                                <label class="vn-label">BGM 규칙 (배경 연동)</label>
+                                <div class="vn-rule-list-wrapper">
+                                    <ul id="vn-bgm-rules-list" style="padding:0; margin:0;"></ul>
+                                </div>
+                                <div style="display:flex; gap:5px; margin-top:5px; flex-direction: column;">
+                                    <input type="text" id="vn-bgm-trigger" placeholder="배경 키워드 (예: school)" class="vn-pattern-input">
+                                    <input type="text" id="vn-bgm-url" placeholder="음악 URL (.mp3)" class="vn-pattern-input">
+                                    <button id="vn-add-bgm-btn" class="vn-modal-button" style="width:100%;">규칙 추가</button>
+                                </div>
+                            </div>
+
+                            <div class="vn-setting-option" style="margin-top:20px;">
+                                <button id="vn-edit-ui-button" class="vn-modal-button" style="width:100%;">UI 위치 편집</button>
+                            </div>
+                        </div>
+
+                        <!-- [탭 2] 환경 설정 -->
+                        <div id="vn-tab-system" class="vn-tab-content">
+                            <div class="vn-setting-option">
+                                <label>텍스트 속도 <span id="vn-speed-display" style="float:right; color:#a2d2ff;">40ms</span></label>
+                                <input type="range" id="vn-speed-slider" min="10" max="90" step="10" style="width:100%;">
+                            </div>
+                            <!-- 볼륨 기능은 나중에 오디오 매니저 추가 시 작동 -->
+                            <div class="vn-setting-option">
+                                <label>볼륨 (준비중) <span id="vn-vol-display" style="float:right; color:#a2d2ff;">50%</span></label>
+                                <input type="range" id="vn-vol-slider" min="0" max="1" step="0.1" style="width:100%;">
+                            </div>
+                        </div>
+
+                        <!-- [탭 3] 라이브러리 -->
+                        <div id="vn-tab-library" class="vn-tab-content">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <span>설정 저장소</span>
+                                <button id="vn-library-add-btn" class="vn-modal-button small" style="background:#28a745;">+ 저장</button>
+                            </div>
+                            <div id="vn-library-container" style="background:#333; padding:10px; border-radius:5px; min-height:150px;"></div>
+
+                            <!-- [추가] 파일 가져오기 섹션 -->
+                            <div style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
+                                <label class="vn-label" style="color:#aaa;">외부 설정 파일 (.json)</label>
+                                <button id="vn-import-file-btn" class="vn-modal-button" style="width:100%; background-color:#555;">설정 파일 불러오기</button>
+                                <input type="file" id="vn-import-file-input" style="display:none;" accept=".json">
+                            </div>
+                        </div> <!-- vn-tab-library 닫는 태그 -->
+
+                        </div>
+                    </div>
+                </div>
+            </div>`;
             document.body.insertAdjacentHTML('beforeend', modalHTML); this.setupModalEventListeners();
         },
+
         setupModalEventListeners() {
             const self = this;
             document.getElementById('vn-modal-close').onclick = () => self.close();
+
+            // 탭 전환 로직
+            document.querySelectorAll('.vn-tab-btn').forEach(btn => {
+                btn.onclick = () => {
+                    document.querySelectorAll('.vn-tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.vn-tab-content').forEach(c => c.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById(btn.dataset.tab).classList.add('active');
+                };
+            });
+
+            // 환경설정 슬라이더
+            const speedSlider = document.getElementById('vn-speed-slider');
+            speedSlider.oninput = (e) => {
+                self.settings.typingSpeed = parseInt(e.target.value);
+                document.getElementById('vn-speed-display').textContent = self.settings.typingSpeed + 'ms';
+                self.save();
+            };
+            const volSlider = document.getElementById('vn-vol-slider');
+            volSlider.oninput = (e) => {
+                self.settings.globalVolume = parseFloat(e.target.value);
+                document.getElementById('vn-vol-display').textContent = Math.round(self.settings.globalVolume*100) + '%';
+                self.save();
+                AudioManager.updateVolume(); // [추가] 즉시 볼륨 반영
+            };
+
+            // [추가] BGM 규칙 추가 버튼
+            document.getElementById('vn-add-bgm-btn').onclick = () => {
+                const trigger = document.getElementById('vn-bgm-trigger').value.trim();
+                const url = document.getElementById('vn-bgm-url').value.trim();
+                if (!trigger || !url) { alert("키워드와 URL을 모두 입력하세요"); return; }
+
+                if (!self.settings.customBgmRules) self.settings.customBgmRules = [];
+                self.settings.customBgmRules.push({ id: Date.now(), trigger, audioUrl: url });
+                self.save();
+                self.renderBgmRules();
+                AudioManager.loadRules(self.settings.customBgmRules);
+
+                document.getElementById('vn-bgm-trigger').value = '';
+                document.getElementById('vn-bgm-url').value = '';
+            };
+
+            // 라이브러리 추가 시 (숨겨진 오프닝 데이터도 같이 저장)
+            document.getElementById('vn-library-add-btn').onclick = () => {
+                const name = prompt("설정 이름을 입력하세요:", "나의 설정");
+                if(name) {
+                    LibraryManager.addPreset({
+                        settings: {
+                            animations: self.settings.customAnimations,
+                            bgm: self.settings.customBgmRules
+                        },
+                        // 현재 메모리에 있는 오프닝 스크립트를 같이 넘김
+                        opening: self.settings.openingScript
+                    }, name);
+                }
+            };
+
+            // 기존 이벤트 연결
             document.querySelectorAll('input[name="characterMode"]').forEach(radio => { radio.onchange = (e) => { self.settings.characterMode = e.target.value; self.save(); self.toggleModalSections(); }; });
             document.getElementById('vn-edit-ui-button').onclick = () => { self.close(); UIManager.toggleUiEditMode(true); };
             document.getElementById('vn-custom-bg-url-input').oninput = (e) => { self.settings.customBackgroundUrl = e.target.value; self.save(); };
             document.getElementById('vn-bg-pattern-input').oninput = (e) => { self.settings.backgroundPattern = e.target.value; self.save(); };
             document.getElementById('vn-char-pattern-input').oninput = (e) => { self.settings.characterPattern = e.target.value; self.save(); };
-            document.getElementById('vn-add-anim-rule-btn').onclick = () => { const trigger = document.getElementById('vn-anim-trigger-input').value.trim(); const animation = document.getElementById('vn-anim-type-select').value; if (!trigger) { alert('트리거 단어를 입력해주세요.'); return; } self.settings.customAnimations.push({ id: Date.now(), trigger, animation }); self.save(); self.renderAnimationRules(); document.getElementById('vn-anim-trigger-input').value = ''; };
-            document.getElementById('vn-export-anim-btn').onclick = () => { const dataStr = JSON.stringify(self.settings.customAnimations, null, 2); const blob = new Blob([dataStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'vn_animation_settings.json'; a.click(); URL.revokeObjectURL(url); };
-            const importInput = document.getElementById('vn-import-anim-input');
-            document.getElementById('vn-import-anim-btn').onclick = () => importInput.click();
-            importInput.onchange = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const importedRules = JSON.parse(event.target.result); if (Array.isArray(importedRules)) { self.settings.customAnimations = importedRules; self.save(); self.renderAnimationRules(); alert('설정을 성공적으로 가져왔습니다.'); } else { throw new Error('JSON is not an array.'); } } catch (err) { console.error("VN Engine Import Error:", err); alert('파일을 가져오는 데 실패했습니다. 파일 형식이 올바른지 확인해주세요. (F12 > Console 확인)'); } }; reader.readText(file); importInput.value = ''; };
+            document.getElementById('vn-add-anim-rule-btn').onclick = () => { const trigger = document.getElementById('vn-anim-trigger-input').value.trim(); const animation = document.getElementById('vn-anim-type-select').value; if (!trigger) return; self.settings.customAnimations.push({ id: Date.now(), trigger, animation }); self.save(); self.renderAnimationRules(); document.getElementById('vn-anim-trigger-input').value = ''; };
+        // [추가] 파일 가져오기 (Import) 로직
+            const importInput = document.getElementById('vn-import-file-input');
+            const importBtn = document.getElementById('vn-import-file-btn');
+
+            if (importBtn && importInput) {
+                importBtn.onclick = () => importInput.click();
+
+                importInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            let importedData;
+                            try { importedData = JSON.parse(event.target.result); }
+                            catch (err) { throw new Error("JSON 형식이 아닙니다."); }
+
+                            // 데이터 형식 판별 (V3 객체형 vs V1 배열형)
+                            const isV3 = importedData.settings && importedData.meta;
+                            const isV1 = Array.isArray(importedData);
+
+                            if (!isV3 && !isV1) throw new Error("올바른 VN 설정 파일이 아닙니다.");
+
+                            // 데이터 추출
+                            let finalData = {
+                                animations: [], bgm: [], opening: []
+                            };
+
+                            if (isV3) {
+                                finalData.animations = importedData.settings.animations || [];
+                                finalData.bgm = importedData.settings.bgm || [];
+                                const rawOp = importedData.opening;
+                                if (Array.isArray(rawOp)) finalData.opening = rawOp;
+                                else if (typeof rawOp === 'string' && rawOp.trim() !== "") finalData.opening = [{title:"기본", content:rawOp}];
+                            } else if (isV1) {
+                                finalData.animations = importedData; // 구버전은 애니메이션만 있음
+                            }
+
+                            // 사용자 선택
+                            if (confirm(`파일: ${file.name}\n\n[확인] -> '저장소'에 카트리지로 저장\n[취소] -> 저장 안 하고 '즉시 적용'`)) {
+                                // 1. 라이브러리에 저장
+                                const name = file.name.replace('.json', '');
+                                LibraryManager.addPreset({
+                                    settings: { animations: finalData.animations, bgm: finalData.bgm },
+                                    opening: finalData.opening
+                                }, name);
+                            } else {
+                                // 2. 즉시 적용
+                                self.settings.customAnimations = finalData.animations;
+                                self.settings.customBgmRules = finalData.bgm;
+                                self.settings.openingScripts = finalData.opening; // [변경] openingScripts에 저장
+
+                                self.save();
+                                self.renderAnimationRules();
+                                self.renderBgmRules();
+                                AudioManager.loadRules(self.settings.customBgmRules);
+
+                                alert("설정이 현재 화면에 적용되었습니다.");
+                            }
+
+                        } catch (err) {
+                            alert('가져오기 실패: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                    importInput.value = ''; // 초기화
+                };
+            }
+                        // 라이브러리 컨테이너 이벤트 위임 (삭제 및 로드 버튼 활성화)
+            const libContainer = document.getElementById('vn-library-container');
+            if (libContainer) {
+                // 이벤트 중복 방지를 위해 기존 요소를 복제하여 교체
+                const newLibContainer = libContainer.cloneNode(true);
+                libContainer.parentNode.replaceChild(newLibContainer, libContainer);
+
+                newLibContainer.addEventListener('click', (e) => {
+                    // 삭제 버튼인지 확인
+                    if (e.target.dataset.action === 'delete') {
+                        LibraryManager.deletePreset(e.target.dataset.id);
+                    }
+                    // 로드(커버) 영역인지 확인
+                    const loadTarget = e.target.closest('[data-action="load"]');
+                    if (loadTarget) {
+                        LibraryManager.applyPreset(loadTarget.dataset.id);
+                    }
+                });
+            }
         },
+
         renderAnimationRules() {
             const listElement = document.getElementById('vn-animation-rules-list'); if (!listElement) return; listElement.innerHTML = '';
-            this.settings.customAnimations.forEach(rule => { const li = document.createElement('li'); li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #444;'; li.innerHTML = `<span><strong style="color: #a2d2ff;">${rule.trigger}</strong> → ${ANIMATION_TYPES[rule.animation] || rule.animation}</span><button class="vn-delete-rule-btn" data-id="${rule.id}" style="background: #c70000; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 2px 6px;">삭제</button>`; listElement.appendChild(li); });
+            this.settings.customAnimations.forEach(rule => { const li = document.createElement('li'); li.style.cssText = 'display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #444; font-size:13px;'; li.innerHTML = `<span><b>${rule.trigger}</b>: ${ANIMATION_TYPES[rule.animation]}</span><button class="vn-delete-rule-btn" data-id="${rule.id}" style="background:#c70000; color:white; border:none; border-radius:3px; cursor:pointer;">×</button>`; listElement.appendChild(li); });
             listElement.querySelectorAll('.vn-delete-rule-btn').forEach(btn => { btn.onclick = (e) => { const ruleId = Number(e.target.dataset.id); this.settings.customAnimations = this.settings.customAnimations.filter(r => r.id !== ruleId); this.save(); this.renderAnimationRules(); }; });
         },
         toggleModalSections() { const selectedMode = this.settings.characterMode; document.getElementById('vn-custom-bg-section').style.display = (selectedMode === 'single' || selectedMode === 'internalImage') ? 'block' : 'none'; document.getElementById('vn-multi-mode-section').style.display = (selectedMode === 'multi') ? 'block' : 'none'; document.getElementById('vn-custom-anim-section').style.display = (selectedMode === 'multi') ? 'block' : 'none'; },
-        open() { document.querySelector(`input[name="characterMode"][value="${this.settings.characterMode}"]`).checked = true; document.getElementById('vn-custom-bg-url-input').value = this.settings.customBackgroundUrl; document.getElementById('vn-bg-pattern-input').value = this.settings.backgroundPattern; document.getElementById('vn-char-pattern-input').value = this.settings.characterPattern; this.toggleModalSections(); this.renderAnimationRules(); document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'block'; },
+        // [추가] BGM 목록 렌더링
+        renderBgmRules() {
+            const list = document.getElementById('vn-bgm-rules-list'); if(!list) return; list.innerHTML = '';
+            const rules = this.settings.customBgmRules || [];
+            rules.forEach(r => {
+                const li = document.createElement('li');
+                li.style.cssText = 'display:flex; justify-content:space-between; padding:5px; border-bottom:1px solid #444; font-size:13px;';
+                li.innerHTML = `<span>🎵 <b>${r.trigger}</b></span><button class="vn-del-bgm-btn" data-id="${r.id}" style="background:#c70000; border:none; color:white; border-radius:3px;">×</button>`;
+                list.appendChild(li);
+            });
+            list.querySelectorAll('.vn-del-bgm-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    const id = Number(e.target.dataset.id);
+                    this.settings.customBgmRules = this.settings.customBgmRules.filter(x => x.id !== id);
+                    this.save(); this.renderBgmRules(); AudioManager.loadRules(this.settings.customBgmRules);
+                };
+            });
+        },
+
+        open() {
+            document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'flex';
+            document.querySelector(`input[name="characterMode"][value="${this.settings.characterMode}"]`).checked = true;
+            document.getElementById('vn-custom-bg-url-input').value = this.settings.customBackgroundUrl;
+            document.getElementById('vn-bg-pattern-input').value = this.settings.backgroundPattern;
+            document.getElementById('vn-char-pattern-input').value = this.settings.characterPattern;
+            document.getElementById('vn-speed-slider').value = this.settings.typingSpeed || 40;
+            document.getElementById('vn-vol-slider').value = this.settings.globalVolume || 0.5;
+            document.getElementById('vn-speed-display').textContent = (this.settings.typingSpeed || 40) + 'ms';
+
+            this.toggleModalSections();
+            this.renderAnimationRules();
+            this.renderBgmRules(); // [추가] BGM 목록 표시
+            LibraryManager.load(); LibraryManager.render();
+        },
         close() { document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'none'; },
     };
 
@@ -295,6 +897,16 @@
             @keyframes flash { from, 50%, to { opacity: 1; } 25%, 75% { opacity: 0.6; } } .vn-anim-flash { animation: flash 0.8s; }
             @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-15px); } 60% { transform: translateY(-8px); } } .vn-anim-bounce { animation: bounce 1s; }
             @keyframes vibrate { 0% { transform: translate(0); } 20% { transform: translate(-1px, 1px); } 40% { transform: translate(-1px, -1px); } 60% { transform: translate(1px, 1px); } 80% { transform: translate(1px, -1px); } 100% { transform: translate(0); } } .vn-anim-vibrate { animation: vibrate 0.2s linear infinite; animation-iteration-count: 3; }
+            @keyframes fall-left {
+    0% { transform: rotate(0deg); }
+    30% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+    100% { transform: rotate(-90deg) translateY(20px); }
+}
+.vn-anim-fall-left {
+    transform-origin: bottom center;
+    animation: fall-left 2s ease-in forwards;
+}
             #${DOM_IDS.LOADING_INDICATOR} {
                 position: absolute;
                 bottom: 15px; /* 뒤로가기 버튼과 같은 높이 */
@@ -311,6 +923,98 @@
             }
             @keyframes vn-spin {
                 to { transform: rotate(360deg); }
+            }
+            /* [신규] 설정 모달 탭 UI 스타일 */
+            .vn-modal-content { display: flex; flex-direction: row; background-color: #2c2c2c; width: 95%; max-width: 650px; height: 80vh; border-radius: 10px; border: 1px solid #555; position: relative; overflow: hidden; color: white; }
+            #vn-modal-close { position: absolute; top: 10px; right: 15px; color: #aaa; font-size: 28px; cursor: pointer; z-index: 20; }
+
+            /* 좌측 사이드바 */
+            .vn-settings-sidebar { width: 100px; background-color: #222; border-right: 1px solid #444; padding-top: 50px; flex-shrink: 0; }
+            .vn-tab-btn { padding: 15px 10px; color: #888; cursor: pointer; font-size: 14px; font-weight: bold; text-align: center; border-left: 3px solid transparent; transition: 0.2s; }
+            .vn-tab-btn.active { background-color: #2c2c2c; color: white; border-left: 3px solid #1a73e8; }
+
+            /* 우측 컨텐츠 */
+            .vn-settings-body { flex: 1; padding: 20px; overflow-y: auto; }
+            .vn-tab-content { display: none; }
+            .vn-tab-content.active { display: block; animation: vn-fade-in 0.3s; }
+            @keyframes vn-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+            .vn-setting-option { margin-bottom: 20px; }
+            .vn-pattern-input { width: 100%; padding: 8px; margin-top: 5px; background: #444; border: 1px solid #666; color: white; border-radius: 4px; box-sizing: border-box; }
+            .vn-modal-button { background: #1a73e8; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
+            .vn-modal-button.small { padding: 4px 8px; font-size: 12px; }
+            .vn-anim-rule-list-container { max-height: 120px; overflow-y: auto; background: #333; border: 1px solid #555; border-radius: 4px; }
+
+            /* 슬라이더 */
+            input[type=range] { -webkit-appearance: none; background: transparent; margin-top: 5px; }
+            input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #1a73e8; cursor: pointer; margin-top: -8px; border: 2px solid white; }
+            input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #555; }
+
+            /* [수정] 라이브러리 카트리지 스타일 (홀쭉한 포스터 비율 적용) */
+            .vn-library-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr; /* 2열 배치 */
+                gap: 15px;
+                padding-bottom: 20px;
+                /* ★ 핵심 1: 칸 안에서 카트리지를 가운데 정렬 */
+                justify-items: center;
+            }
+
+            .vn-cartridge {
+                background: #2a2a2a;
+                border: 1px solid #444;
+                border-radius: 8px;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+                transition: transform 0.2s;
+
+                /* ★ 핵심 2: 너비를 강제로 줄여서 홀쭉하게 만듦 */
+                width: 100%;
+                max-width: 160px; /* 이 숫자를 줄이면 더 홀쭉해집니다 (160px 추천) */
+            }
+
+            .vn-cartridge:active { transform: scale(0.98); }
+
+            .vn-cartridge-cover {
+                /* 높이는 그대로 유지 (2:3 비율 완성: 160px * 1.5 = 240px) */
+                height: 240px;
+                background-size: cover;
+                background-position: center;
+                position: relative;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-bottom: 1px solid #333;
+            }
+
+            /* (나머지 스타일은 동일) */
+            .vn-cartridge-load-overlay {
+                position: absolute; inset: 0; background: rgba(0,0,0,0.6);
+                color: #fff; display: flex; align-items: center; justify-content: center;
+                font-weight: bold; font-size: 1.2em; opacity: 0; transition: 0.2s;
+                backdrop-filter: blur(2px);
+            }
+            .vn-cartridge-cover:active .vn-cartridge-load-overlay { opacity: 1; }
+
+            .vn-cartridge-info {
+                padding: 10px; display: flex; flex-direction: column;
+                gap: 5px; flex: 1; width: 100%; box-sizing: border-box; /* 패딩 포함 너비 계산 */
+            }
+            .vn-cartridge-title {
+                font-weight: bold; font-size: 13px; color: #fff;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            }
+            .vn-cartridge-meta {
+                font-size: 11px; color: #888; font-family: monospace; margin-bottom: 5px;
+            }
+
+            .vn-btn-del {
+                background: #c72c2c; border: none; color: white;
+                border-radius: 4px; padding: 8px 0; font-size: 12px; font-weight: bold;
+                cursor: pointer; width: 100%; margin-top: auto;
             }
         `;
     }
@@ -385,7 +1089,24 @@
         previous() { if (this.isTyping) this.skipTyping(); if (this.currentIndex <= this.firstTextCueIndex) return; for (let i = this.currentIndex - 1; i >= 0; i--) { const cue = this.cueSheet[i]; if (cue.type === 'dialogue' || cue.type === 'action') { this.currentIndex = i; this.processCue(cue); if (this.currentIndex < this.firstTextCueIndex) UIManager.hideBackButton(); return; } } },
         hide() { if (!this.isVisible) return; UIManager.hideAll(); this.isVisible = false; this.isFinished = true; },
         formatText(text) { return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); },
-        type(element, text) { element.classList.add('typing-effect'); this.isTyping = true; let i = 0; element.innerHTML = ''; this.typingTimer = setInterval(() => { if (i < text.length) { element.innerHTML += text.charAt(i); i++; } else { this.skipTyping(); } }, 40); },
+        type(element, text) {
+            element.classList.add('typing-effect');
+            this.isTyping = true;
+            let i = 0;
+            element.innerHTML = '';
+
+            // ★ [수정] 설정된 속도 가져오기 (없으면 기본값 40)
+            const speed = SettingsManager.settings.typingSpeed || 40;
+
+            this.typingTimer = setInterval(() => {
+                if (i < text.length) {
+                    element.innerHTML += text.charAt(i);
+                    i++;
+                } else {
+                    this.skipTyping();
+                }
+            }, speed); // ★ 여기에 변수 적용
+        },
         skipTyping() { clearInterval(this.typingTimer); this.isTyping = false; const dialogueElement = UIManager.getDialogueTextElement(); if (dialogueElement) dialogueElement.classList.remove('typing-effect'); const cue = this.cueSheet[this.currentIndex]; if (cue && (cue.type === 'action' || cue.type === 'dialogue')) { dialogueElement.innerHTML = this.formatText(cue.content).replace(/\n/g, '<br>'); } },
         async processCue(cue) {
             switch (cue.type) {
@@ -620,6 +1341,76 @@
             SettingsManager.createModal();
             console.log("VN Engine: 비주얼 노벨 UI 및 제어판이 준비되었습니다.");
         },
+
+
+        // [신규 기능] 오프닝 선택 모달 생성 및 표시
+showOpeningSelectionModal(scripts, onSelect) {
+    // 기존 모달 제거 (중복 방지)
+    const oldModal = document.getElementById('vn-opening-select-modal');
+    if (oldModal) oldModal.remove();
+
+    // 버튼 목록 생성
+    let buttonsHtml = '';
+    scripts.forEach((script, index) => {
+        // 제목이 비어있으면 내용 앞부분을 잘라서 제목으로 사용
+        const title = script.title || (script.content.substring(0, 20) + "...");
+        buttonsHtml += `<button class="vn-opening-option-btn" data-index="${index}">${title}</button>`;
+    });
+
+    // 모달 HTML 구조
+    const modalHtml = `
+        <div id="vn-opening-select-modal" style="
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 200001;
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column; color: white; font-family: 'Pretendard', sans-serif;">
+
+            <div style="background: #2c2c2c; padding: 30px; border-radius: 12px; border: 1px solid #555; width: 400px; max-width: 90%; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <h2 style="margin-top: 0; margin-bottom: 20px; color: #a2d2ff;">시작 설정 선택</h2>
+                <p style="color: #ccc; margin-bottom: 20px; font-size: 0.9em;">원하는 오프닝 시나리오를 선택해주세요.</p>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto;">
+                    ${buttonsHtml}
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid #444; margin: 20px 0;">
+
+                <button id="vn-opening-skip-btn" style="
+                    background: transparent; border: 1px solid #666; color: #aaa;
+                    padding: 8px 16px; border-radius: 6px; cursor: pointer; width: 100%;">
+                    선택 안 함 (바로 시작)
+                </button>
+            </div>
+        </div>
+        <style>
+            .vn-opening-option-btn {
+                background: #444; color: white; border: none; padding: 12px;
+                border-radius: 6px; cursor: pointer; font-size: 1.1em; text-align: left;
+                transition: background 0.2s, transform 0.1s;
+            }
+            .vn-opening-option-btn:hover { background: #1a73e8; transform: translateX(5px); }
+        </style>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const modal = document.getElementById('vn-opening-select-modal');
+
+    // 오프닝 버튼 클릭 이벤트
+    modal.querySelectorAll('.vn-opening-option-btn').forEach(btn => {
+        btn.onclick = () => {
+            const index = parseInt(btn.dataset.index);
+            modal.remove();
+            onSelect(scripts[index]); // 선택된 스크립트 객체 전달
+        };
+    });
+
+    // 스킵 버튼 클릭 이벤트
+    document.getElementById('vn-opening-skip-btn').onclick = () => {
+        modal.remove();
+        onSelect(null); // 선택 없음
+    };
+},
 
         createInputModal() {
             const modalHTML = `
@@ -893,7 +1684,7 @@
         },
         updateSingleCharacter(url) { const img = this.elements.cgSingle; if (!img) return; if (url.toLowerCase() === 'off') { img.classList.remove('visible'); setTimeout(() => { if (!img.classList.contains('visible')) img.src = ''; }, 300); } else { if (img.src !== url) { img.src = url; } if (!img.classList.contains('visible')) { img.classList.add('visible'); } } },
         applyCustomBackground() { const { characterMode, customBackgroundUrl } = SettingsManager.settings; if ((characterMode === 'single' || characterMode === 'internalImage') && customBackgroundUrl) this.updateBackgroundImage(customBackgroundUrl); },
-        updateBackgroundImage(url) { if (this.elements.background && this.elements.background.style.backgroundImage !== `url("${url}")`) { this.elements.background.style.backgroundImage = `url("${url}")`; } },
+        updateBackgroundImage(url) { if (this.elements.background && this.elements.background.style.backgroundImage !== `url("${url}")`) { this.elements.background.style.backgroundImage = `url("${url}")`; AudioManager.checkAndPlay(url);} },
         updateStatusWindow(text) {
             const { statusWindow } = this.elements;
             if (statusWindow) {
@@ -1140,25 +1931,96 @@ function stopRealtimeChecker() {
     isChecking = false;
     StageManager.hide();
 }
+
     function toggleVNEngine() {
+        // 버튼 누르는 순간 오디오 잠금 해제 시도
+        AudioManager.unlock();
         isEngineActive = !isEngineActive;
         const button = document.getElementById(DOM_IDS.START_BUTTON);
+
         if (button) {
             if (isEngineActive) {
+                // [ON] VN 시작
                 button.textContent = 'VN 종료';
                 button.classList.add('active');
+
+                // 1. 실시간 감지 즉시 시작
                 startRealtimeChecker();
+
+                // 2. 오프닝 재생 로직 (PC V3 동일)
+                // 설정창에는 없지만, JSON 불러오기나 라이브러리 로드로 값이 들어와 있을 수 있음
+                // --- 오프닝 재생 로직 (멀티 오프닝 대응) ---
+                const openingScripts = SettingsManager.settings.openingScripts || [];
+                const sessionId = getCurrentSessionId(); // 현재 세션 ID
+
+                // 오프닝 재생 조건: 스크립트 있음 AND (세션ID 없거나 OR 안 본 세션임)
+                const hasSeen = sessionId && OpeningHistoryManager.hasSeen(sessionId);
+
+                // 오프닝 재생 헬퍼 함수
+                const playOpening = (scriptContent) => {
+                    console.log("VN Engine: 오프닝 재생 시작");
+                    if (sessionId) OpeningHistoryManager.markAsSeen(sessionId); // 시청 기록 저장
+                    StageManager.start(scriptContent);
+                };
+
+                if (openingScripts.length > 0 && !hasSeen) {
+                    if (openingScripts.length === 1) {
+                         // 1. 오프닝이 1개일 때 -> 기존처럼 바로 재생
+                         playOpening(openingScripts[0].content);
+                    } else {
+                        // 2. 오프닝이 2개 이상일 때 -> 선택 모달 띄우기
+                        UIManager.showOpeningSelectionModal(openingScripts, (selectedScript) => {
+                            if (selectedScript) {
+                                playOpening(selectedScript.content);
+                            } else {
+                                console.log("VN Engine: 오프닝 선택 취소 (바로 시작)");
+                                // 선택 안 함을 눌러도, 다음에 또 묻지 않으려면 '본 것'으로 처리 (취향따라 삭제 가능)
+                                if (sessionId) OpeningHistoryManager.markAsSeen(sessionId);
+                            }
+                        });
+                    }
+                } else {
+                    console.log("VN Engine: 오프닝 없음 또는 이미 시청함 -> 스킵");
+                }
+                // [수정 끝] -----------------
+
             } else {
+                // [VN 종료 상태]
                 button.textContent = 'VN 시작';
                 button.classList.remove('active');
+
                 stopRealtimeChecker();
+                StageManager.hide();
+                AudioManager.stopAll(); // 음악도 같이 끔
+
+                // [수정 시작] ---------------
+                // 혹시 선택창이 떠 있다면 닫기
+                const modal = document.getElementById('vn-opening-select-modal');
+                if (modal) modal.remove();
+                // [수정 끝] -----------------
             }
         }
     }
+
     // --- 스크립트 초기화 ---
-    console.log("Visual Novel Engine V1.5 (UI-Edit-Fix) 로드됨.");
+    console.log("VN Engine V2.0_mobile 로드됨.");
     SettingsManager.load();
     UIManager.setup();
-    let lastUrl = location.href; new MutationObserver(() => { const url = location.href; if (url !== lastUrl) { lastUrl = url; if(isEngineActive) { toggleVNEngine(); } } }).observe(document.body, { subtree: true, childList: true });
+    // --- URL 감지 및 자동 로드 ---
+    let lastUrl = location.href;
+    new MutationObserver(() => {
+        const url = location.href;
+        if (url !== lastUrl) {
+            lastUrl = url;
+
+            // 0.5초 뒤에 자동 로드 시도 (페이지 로딩 시간 고려)
+            setTimeout(() => {
+                LibraryManager.checkAutoLoad();
+            }, 500);
+        }
+    }).observe(document.body, { subtree: true, childList: true });
+
+    // 스크립트 처음 실행 시에도 한 번 체크
+    setTimeout(() => LibraryManager.checkAutoLoad(), 500);
 
 })();
