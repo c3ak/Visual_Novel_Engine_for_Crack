@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Visual Novel Engine V3 Beta
+// @name         Visual Novel Engine V3
 // @namespace    http://tampermonkey.net/
 // @version      3
 // @description  향상된 몰입감을 위한 비주얼 노벨 UI 스크립트 입니다.
