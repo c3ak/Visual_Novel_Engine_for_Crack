@@ -1,11 +1,14 @@
 // ==UserScript==
-// @name         Visual Novel Engine V2.1 Beta
+// @name         Visual Novel Engine V3 Beta
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      3
 // @description  향상된 몰입감을 위한 비주얼 노벨 UI 스크립트 입니다.
 // @author       agetion(c3ak)
 // @match        *://crack.wrtn.ai/*
+// @connect      contents-api.wrtn.ai
+// @connect      raw.githubusercontent.com
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
 // @run-at       document-idle
 // @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine.user.js
 // @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine.user.js
@@ -30,48 +33,877 @@
         'fall-left': '왼쪽으로 털썩(넘어짐)'
     };
 
+
+// --- 오디오 관리자 ---
+    const AudioManager = {
+        currentAudio: null,
+        currentUrl: null,
+        rules: [],
+
+        loadRules(rules) { this.rules = rules || []; },
+
+        // [신규] 볼륨 즉시 업데이트 함수
+        updateVolume() {
+            if (this.currentAudio && !this.currentAudio.paused) {
+                this.currentAudio.volume = SettingsManager.settings.globalVolume;
+            }
+        },
+
+        checkAndPlay(imageUrl) {
+            if (!imageUrl || imageUrl === 'off') return;
+            const filename = imageUrl.substring(imageUrl.lastIndexOf('/') + 1);
+            const match = this.rules.find(rule => filename.includes(rule.trigger));
+            if (match) {
+                this.play(match.audioUrl);
+            }
+        },
+
+        play(url) {
+            if (this.currentUrl === url && this.currentAudio && !this.currentAudio.paused) return;
+            if (this.currentAudio) {
+                this.fadeOutAndStop(this.currentAudio);
+            }
+            this.currentUrl = url;
+            const newAudio = new Audio(url);
+            newAudio.loop = true;
+            newAudio.volume = 0;
+            const playPromise = newAudio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    this.fadeIn(newAudio, SettingsManager.settings.globalVolume);
+                    this.currentAudio = newAudio;
+                }).catch(error => {
+                    console.warn("VN Engine: BGM 재생 실패", error);
+                });
+            }
+        },
+
+        fadeIn(audio, targetVol) {
+            let vol = 0;
+            const timer = setInterval(() => {
+                const maxVol = SettingsManager.settings.globalVolume;
+                if (!audio || audio.paused) { clearInterval(timer); return; }
+                vol += 0.05;
+                if (vol >= maxVol) {
+                    vol = maxVol;
+                    audio.volume = vol;
+                    clearInterval(timer);
+                } else {
+                    audio.volume = vol;
+                }
+            }, 100);
+        },
+
+        fadeOutAndStop(audio) {
+            if (!audio) return;
+            let vol = audio.volume;
+            const timer = setInterval(() => {
+                vol -= 0.05;
+                if (vol <= 0) {
+                    vol = 0;
+                    audio.volume = 0;
+                    audio.pause();
+                    audio.currentTime = 0;
+                    clearInterval(timer);
+                } else {
+                    audio.volume = vol;
+                }
+            }, 100);
+        },
+
+        // ★ [신규 추가] 모든 오디오 정지 함수
+        stopAll() {
+            if (this.currentAudio) {
+                this.fadeOutAndStop(this.currentAudio); // 서서히 꺼짐
+                this.currentAudio = null;
+                this.currentUrl = null;
+            }
+        }
+    };
+    // [신규] URL에서 식별 ID 추출 (작품 ID 우선)
+    function getCurrentTargetId() {
+        const path = window.location.pathname;
+
+        // 1순위: 작품(Story) ID (예: /stories/xxxx/episodes/...)
+        const storyMatch = path.match(/\/stories\/([a-f0-9]{24})/);
+        if (storyMatch) return { id: storyMatch[1], type: 'story', name: '작품' };
+
+        // 2순위: 일반 채팅(Chat) ID
+        const chatMatch = path.match(/\/chats\/([a-f0-9]{24})/);
+        if (chatMatch) return { id: chatMatch[1], type: 'chat', name: '채팅방' };
+
+        const cMatch = path.match(/\/c\/([a-f0-9]{24})/);
+        if (cMatch) return { id: cMatch[1], type: 'chat', name: '채팅방' };
+
+        return null;
+    }
+
+    // URL에서 Story ID를 추출하는 헬퍼 함수
+    const getStoryId = () => {
+        // /stories/ 와 /episodes/ 사이의 ID 추출
+        const match = window.location.pathname.match(/\/stories\/([a-f0-9]+)/);
+        // 만약 없으면 채팅방 ID라도 가져오도록 시도 (범용성)
+        if (!match) {
+            const chatMatch = window.location.pathname.match(/\/chats\/([a-f0-9]+)/);
+            return chatMatch ? chatMatch[1] : 'unknown_id';
+        }
+        return match[1];
+    };
+
+    // --- 라이브러리 매니저 (수정됨: 오토 로드 기능 추가) ---
+    const LibraryManager = {
+        presets: [],
+        lastLoadedId: null, // 중복 로드 방지용
+
+        load() {
+            const data = localStorage.getItem('vnEngineLibrary');
+            try { this.presets = data ? JSON.parse(data) : []; } catch (e) { this.presets = []; }
+        },
+
+        save() {
+            localStorage.setItem('vnEngineLibrary', JSON.stringify(this.presets));
+            this.render();
+        },
+
+        addPreset(data, name = '', coverUrl = '') {
+            const target = getCurrentTargetId(); // 현재 페이지 ID 가져오기
+            const storyId = data.meta?.storyId || target?.id || 'unknown';
+            const finalName = name || `Preset ${new Date().toLocaleDateString()}`;
+
+            const newPreset = {
+                id: Date.now().toString(),
+                name: finalName,
+                storyId: storyId, // 이 ID가 나중에 자동 매칭의 기준이 됩니다.
+                coverUrl: coverUrl,
+                data: {
+                    animations: data.settings?.animations || data.customAnimations || [],
+                    bgm: data.settings?.bgm || data.customBgmRules || [],
+                    // [추가] 오프닝 스크립트 저장
+                    opening: data.opening || SettingsManager.settings.openingScript || ""
+                },
+                createdAt: new Date().toISOString()
+            };
+
+            this.presets.unshift(newPreset);
+            this.save();
+            this.showToast(`✅ "${finalName}" 저장이 완료되었습니다.`);
+        },
+
+        deletePreset(id) {
+            if(confirm("정말 이 프리셋을 삭제하시겠습니까?")) {
+                this.presets = this.presets.filter(p => p.id !== id);
+                this.save();
+            }
+        },
+
+        updateCover(id) {
+            const url = prompt("커버로 사용할 이미지 URL을 입력하세요:");
+            if (url) {
+                const preset = this.presets.find(p => p.id === id);
+                if (preset) { preset.coverUrl = url; this.save(); }
+            }
+        },
+
+    // [핵심] 설정을 실제 엔진에 적용하는 내부 함수
+    _applySettingsData(data) {
+        SettingsManager.settings.customAnimations = data.animations || [];
+        SettingsManager.settings.customBgmRules = data.bgm || [];
+
+        // [수정 시작] ---------------
+        const rawOpening = data.opening;
+        let finalScripts = [];
+
+        if (Array.isArray(rawOpening)) {
+            // 1. 배열 형태인 경우
+            // ★ [핵심 로직] content가 존재하고, 공백을 제외한 길이가 0보다 큰 경우만 남깁니다.
+            // 즉, 템플릿에 content: "" 로 비어있는 항목은 자동으로 걸러집니다.
+            finalScripts = rawOpening.filter(item => item.content && item.content.trim().length > 0);
+
+        } else if (typeof rawOpening === 'string' && rawOpening.trim() !== "") {
+            // 2. 문자열 형태인 경우 (구형 호환)
+            finalScripts = [{ title: "기본 오프닝", content: rawOpening }];
+        }
+
+        SettingsManager.settings.openingScripts = finalScripts;
+        SettingsManager.save();
+
+        // UI 및 엔진 갱신
+        SettingsManager.renderAnimationRules();
+        SettingsManager.renderBgmRules();
+        AudioManager.loadRules(SettingsManager.settings.customBgmRules);
+    },
+
+    // UI에서 카트리지 클릭 시 호출 (수동 로드)
+    applyPreset(id) {
+        const preset = this.presets.find(p => p.id === id);
+        if (!preset) return;
+
+        if (confirm(`[${preset.name}] 설정을 적용하시겠습니까?`)) {
+            this._applySettingsData(preset.data);
+            this.lastLoadedId = preset.storyId; // 현재 로드된 ID 기억
+            SettingsManager.close();
+            this.showToast(`💿 "${preset.name}" 설정이 적용되었습니다.`);
+        }
+    },
+
+    // [신규] URL 변경 시 자동 로드 체크 함수
+    checkAutoLoad() {
+        this.load(); // 최신 목록 로드
+        const target = getCurrentTargetId(); // 현재 페이지 ID 가져오기
+        if (!target || !target.id) return;
+
+        // 이미 이 ID로 로드한 적이 있다면 중복 실행 방지
+        if (this.lastLoadedId === target.id) return;
+
+        // 현재 페이지의 작품 ID와 일치하는 프리셋 찾기
+        const match = this.presets.find(p => p.storyId === target.id);
+
+        if (match) {
+            // 1. 매칭되는 프리셋이 있으면 -> 적용
+            console.log(`VN Engine: Auto-loading preset for ${target.id}`);
+            this._applySettingsData(match.data);
+            this.showToast(`🔄 작품 ID 감지: "${match.name}" 설정이 적용되었습니다.`);
+        } else {
+            // 2. 매칭되는 프리셋이 없으면 -> ★ 콘텐츠 설정 초기화!
+            // (이전 방에서 쓰던 설정이 넘어오지 않도록 방지)
+            SettingsManager.resetContentSettings();
+
+            // 토스트 메시지는 너무 자주 뜨면 귀찮을 수 있으니,
+            // 필요하다면 아래 주석을 풀어주세요.
+            this.showToast(` 등록된 설정이 없어 초기화되었습니다.`);
+        }
+
+        // 현재 로드된 ID 기억 (중복 실행 방지용)
+        this.lastLoadedId = target.id;
+    },
+
+    // 토스트 메시지 표시 함수
+    showToast(message) {
+        let toast = document.getElementById('vn-toast-message');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'vn-toast-message';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.className = 'show';
+        setTimeout(() => { toast.className = toast.className.replace('show', ''); }, 3000);
+    },
+
+    render() {
+        const container = document.getElementById('vn-library-container');
+        if (!container) return;
+
+        if (this.presets.length === 0) {
+            container.innerHTML = '<div class="vn-empty-msg">저장된 카트리지가 없습니다.<br>"+ 새로 만들기"로 현재 설정을 저장하거나<br>파일을 가져와보세요.</div>';
+            return;
+        }
+
+        let html = '<div class="vn-library-grid">';
+        this.presets.forEach(p => {
+            const bgStyle = p.coverUrl ? `background-image: url('${p.coverUrl}');` : 'background: linear-gradient(45deg, #333, #555); display: flex; align-items: center; justify-content: center;';
+            const noImgContent = p.coverUrl ? '' : '<span style="font-size: 2em;">💿</span>';
+
+            html += `
+                <div class="vn-cartridge">
+                    <!-- [수정] onclick 제거, data-action 추가 -->
+                    <div class="vn-cartridge-cover" style="${bgStyle}" data-action="load" data-id="${p.id}">
+                        ${noImgContent}
+                    </div>
+                    <div class="vn-cartridge-info">
+                        <div class="vn-cartridge-title" title="${p.name}">${p.name}</div>
+                        <div class="vn-cartridge-id">ID: ${p.storyId.substring(0, 10)}...</div>
+                        <div class="vn-cartridge-actions">
+                             <!-- [수정] onclick 제거, data-action 추가 -->
+                            <button class="vn-btn-sm vn-btn-del" data-action="delete" data-id="${p.id}">🗑 삭제</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    }
+};
+    window.LibraryManager = LibraryManager;
+
     // --- 설정 관리자 ---
     const SettingsManager = {
         defaults: {
             characterMode: 'multi', dialogueBoxPos: { bottom: '40px', left: '50%', transform: 'translateX(-50%)' },
             statusWindowPos: { top: '20px', right: '20px' }, characterContainerPos: { bottom: '0px', left: '0px' },
-            backgroundPattern: '/g/', characterPattern: '/c/', customBackgroundUrl: '', customAnimations: []
+            backgroundPattern: '/g/', characterPattern: '/c/', customBackgroundUrl: '', customAnimations: [], customBgmRules: [],
+            // globalVolume, typingSpeed 뒤에 openingScripts 배열로 변경
+            globalVolume: 0.5, typingSpeed: 40,
+            openingScripts: []
         },
         settings: {},
         load() {
             const savedSettings = localStorage.getItem('vnEngineSettings');
             this.settings = savedSettings ? JSON.parse(savedSettings) : { ...this.defaults };
             for (const key in this.defaults) { if (!this.settings.hasOwnProperty(key)) { this.settings[key] = this.defaults[key]; } }
+            // 오디오 관리자에 규칙 로드
+            if (this.settings.customBgmRules) { AudioManager.loadRules(this.settings.customBgmRules); }
         },
         save() { localStorage.setItem('vnEngineSettings', JSON.stringify(this.settings)); },
+
+        resetContentSettings() {
+            // 1. 설정값 비우기 (시스템 설정은 건드리지 않음)
+            this.settings.customAnimations = [];
+            this.settings.customBgmRules = [];
+            this.settings.openingScripts = [];
+
+            // 2. 변경된 빈 설정을 저장
+            this.save();
+
+            // 3. 설정창 UI도 빈 목록으로 갱신 (사용자가 설정창을 열었을 때 비어있도록)
+            this.renderAnimationRules();
+            this.renderBgmRules();
+
+            // 4. 오디오 관리자 규칙도 비우기
+            AudioManager.loadRules([]);
+
+            console.log("VN Engine: 설정이 없어 초기 상태로 리셋되었습니다.");
+        },
+
+        // [UI 리메이크] 탭 구조(사이드바 + 컨텐츠) 적용
         createModal() {
             const animationOptions = Object.entries(ANIMATION_TYPES).map(([value, name]) => `<option value="${value}">${name}</option>`).join('');
-            const modalHTML = `<div id="${DOM_IDS.SETTINGS_MODAL}" style="display: none; position: fixed; z-index: 100000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);"><div class="vn-modal-content" style="background-color: #2c2c2c; margin: 5% auto; padding: 25px; border: 1px solid #888; width: 90%; max-width: 650px; border-radius: 10px; color: white; font-family: 'Pretendard', sans-serif; max-height: 90vh; overflow-y: auto;"><span id="vn-modal-close" style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span><h2 style="margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 10px;">VN 엔진 설정</h2><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">모드 선택 </label><input type="radio" id="vn-char-mode-single" name="characterMode" value="single"> <label for="vn-char-mode-single">범용 모드</label><br><input type="radio" id="vn-char-mode-multi" name="characterMode" value="multi"> <label for="vn-char-mode-multi">비주얼챗 모드 </label><br></div><div id="vn-custom-bg-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 배경 (범용 모드용)</label><input type="text" id="vn-custom-bg-url-input" class="vn-pattern-input" placeholder="https://..."></div><div id="vn-multi-mode-section" class="vn-setting-option" style="display: none; margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">URL 패턴 설정 (비주얼챗 모드 전용)</label><input type="text" id="vn-bg-pattern-input" class="vn-pattern-input" placeholder="배경 키워드"><input type="text" id="vn-char-pattern-input" class="vn-pattern-input" placeholder="캐릭터 키워드"></div><div id="vn-custom-anim-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 연출 (비주얼챗 모드 전용)</label><div class="vn-anim-rule-list-container" style="max-height: 150px; overflow-y: auto; background-color: #333; padding: 10px; border-radius: 5px; margin-bottom: 10px;"><ul id="vn-animation-rules-list" style="list-style: none; margin: 0; padding: 0;"></ul></div><div class="vn-anim-add-form" style="display: flex; gap: 10px; margin-bottom: 10px;"><input type="text" id="vn-anim-trigger-input" placeholder="이미지 파일명 포함 단어" class="vn-pattern-input" style="flex: 2;"><select id="vn-anim-type-select" class="vn-pattern-input" style="flex: 1;">${animationOptions}</select><button id="vn-add-anim-rule-btn" class="vn-modal-button">규칙 추가</button></div><div><button id="vn-export-anim-btn" class="vn-modal-button">내보내기</button><button id="vn-import-anim-btn" class="vn-modal-button">가져오기</button><input type="file" id="vn-import-anim-input" style="display:none;" accept=".json"></div></div><div class="vn-setting-option" style="margin-bottom: 20px;"><label style="display: block; margin-bottom: 10px; font-weight: bold;">UI 위치 편집</label><button id="vn-edit-ui-button" class="vn-modal-button">편집 시작</button></div></div></div><style>.vn-modal-button { background-color: #555; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; } .vn-modal-button:hover { background-color: #666; } .vn-pattern-input { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 6px; background-color: #444; color: white; border: 1px solid #666; border-radius: 4px; }</style>`;
+
+            const modalHTML = `
+            <div id="${DOM_IDS.SETTINGS_MODAL}" style="display: none; position: fixed; z-index: 100000; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center;">
+                <div class="vn-modal-content" style="background-color: #2c2c2c; width: 850px; height: 650px; display: flex; border-radius: 10px; border: 1px solid #555; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+
+                    <!-- 닫기 버튼 -->
+                    <span id="vn-modal-close" style="position: absolute; top: 15px; right: 20px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; z-index: 20;">&times;</span>
+
+                    <!-- [왼쪽] 사이드바 탭 -->
+                    <div class="vn-settings-sidebar" style="width: 180px; background-color: #222; border-right: 1px solid #444; padding-top: 60px; box-sizing: border-box;">
+                        <div class="vn-tab-btn active" data-tab="vn-tab-general">🛠 일반 설정</div>
+                        <div class="vn-tab-btn" data-tab="vn-tab-system">⚙ 환경 설정</div>
+                        <!-- 라이브러리 탭 버튼 추가 -->
+                        <div class="vn-tab-btn" data-tab="vn-tab-library">📚 라이브러리</div>
+                    </div>
+
+                    <!-- [오른쪽] 컨텐츠 영역 -->
+                    <div class="vn-settings-body" style="flex: 1; padding: 40px; overflow-y: auto; color: white; font-family: 'Pretendard', sans-serif;">
+                        <h2 style="margin-top: 0; border-bottom: 1px solid #555; padding-bottom: 15px; margin-bottom: 25px; font-size: 24px;">VN 엔진 설정</h2>
+
+                        <!-- 탭 1: 일반 설정 (기존 기능들) -->
+                        <div id="vn-tab-general" class="vn-tab-content active">
+
+                            <!-- BGM 설정 -->
+                            <div id="vn-bgm-section" class="vn-setting-option" style="margin-bottom: 30px;">
+                                <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #a2d2ff;">♫ BGM 설정 (이미지 키워드 매칭)</label>
+                                <div class="vn-rule-list-container" style="height: 120px; overflow-y: auto; background-color: #333; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #555;">
+                                    <ul id="vn-bgm-rules-list" style="list-style: none; margin: 0; padding: 0;"></ul>
+                                </div>
+                                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                                    <input type="text" id="vn-bgm-trigger" placeholder="파일명 키워드 (예: rain)" class="vn-pattern-input" style="flex: 1;">
+                                    <input type="text" id="vn-bgm-url" placeholder="음악 URL (.mp3 등)" class="vn-pattern-input" style="flex: 2;">
+                                    <button id="vn-add-bgm-btn" class="vn-modal-button">추가</button>
+                                </div>
+                            </div>
+
+                            <hr style="border: 0; border-top: 1px solid #444; margin: 20px 0;">
+
+                            <!-- 모드 선택 -->
+                            <div class="vn-setting-option" style="margin-bottom: 20px;">
+                                <label style="display: block; margin-bottom: 10px; font-weight: bold;">모드 선택</label>
+                                <div style="display: flex; gap: 20px;">
+                                    <div><input type="radio" id="vn-char-mode-single" name="characterMode" value="single"> <label for="vn-char-mode-single">범용 모드</label></div>
+                                    <div><input type="radio" id="vn-char-mode-multi" name="characterMode" value="multi"> <label for="vn-char-mode-multi">비주얼챗 모드</label></div>
+                                </div>
+                            </div>
+
+                            <!-- 사용자 배경 (범용) -->
+                            <div id="vn-custom-bg-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;">
+                                <label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 배경 (범용 모드용)</label>
+                                <input type="text" id="vn-custom-bg-url-input" class="vn-pattern-input" placeholder="이미지 URL (https://...)">
+                            </div>
+
+                            <!-- URL 패턴 (멀티) -->
+                            <div id="vn-multi-mode-section" class="vn-setting-option" style="display: none; margin-bottom: 20px;">
+                                <label style="display: block; margin-bottom: 10px; font-weight: bold;">URL 패턴 설정 (비주얼챗 모드 전용)</label>
+                                <input type="text" id="vn-bg-pattern-input" class="vn-pattern-input" placeholder="배경 키워드 (/g/)" style="margin-bottom: 5px;">
+                                <input type="text" id="vn-char-pattern-input" class="vn-pattern-input" placeholder="캐릭터 키워드 (/c/)">
+                            </div>
+
+                            <!-- 사용자 연출 (멀티) -->
+                            <div id="vn-custom-anim-section" class="vn-setting-option" style="margin-bottom: 20px; display: none;">
+                                <label style="display: block; margin-bottom: 10px; font-weight: bold;">사용자 지정 연출 (비주얼챗 모드 전용)</label>
+                                <div class="vn-anim-rule-list-container" style="height: 120px; overflow-y: auto; background-color: #333; padding: 10px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #555;">
+                                    <ul id="vn-animation-rules-list" style="list-style: none; margin: 0; padding: 0;"></ul>
+                                </div>
+                                <div class="vn-anim-add-form" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                                    <input type="text" id="vn-anim-trigger-input" placeholder="이미지 키워드" class="vn-pattern-input" style="flex: 2;">
+                                    <select id="vn-anim-type-select" class="vn-pattern-input" style="flex: 1;">${animationOptions}</select>
+                                    <button id="vn-add-anim-rule-btn" class="vn-modal-button">규칙 추가</button>
+                                </div>
+                                <div style="display: flex; gap: 10px;">
+                                    <button id="vn-export-anim-btn" class="vn-modal-button" style="background-color: #444;">내보내기</button>
+                                    <button id="vn-import-anim-btn" class="vn-modal-button" style="background-color: #444;">가져오기</button>
+                                    <input type="file" id="vn-import-anim-input" style="display:none;" accept=".json">
+                                </div>
+                            </div>
+
+                            <hr style="border: 0; border-top: 1px solid #444; margin: 20px 0;">
+
+                            <div class="vn-setting-option">
+                                <label style="display: block; margin-bottom: 10px; font-weight: bold;">UI 위치 편집</label>
+                                <button id="vn-edit-ui-button" class="vn-modal-button" style="width: 100%;">화면 UI 편집 모드 시작</button>
+                            </div>
+                        </div>
+
+                        <!-- 탭 2: 환경 설정 (신규 기능) -->
+                        <div id="vn-tab-system" class="vn-tab-content">
+
+                            <!-- 볼륨 조절 -->
+                            <div class="vn-setting-option" style="margin-bottom: 40px; background: #333; padding: 20px; border-radius: 8px;">
+                                <label style="display: block; margin-bottom: 15px; font-size: 1.1em; font-weight: bold;">
+                                     BGM 음량 <span id="vn-vol-display" style="color:#a2d2ff; float:right;">50%</span>
+                                </label>
+                                <input type="range" id="vn-vol-slider" min="0" max="1" step="0.05" style="width: 100%; cursor: pointer;">
+                            </div>
+
+                            <!-- 텍스트 속도 조절 -->
+                            <div class="vn-setting-option" style="margin-bottom: 40px; background: #333; padding: 20px; border-radius: 8px;">
+                                <label style="display: block; margin-bottom: 15px; font-size: 1.1em; font-weight: bold;">
+                                     텍스트 출력 속도 <span id="vn-speed-display" style="color:#a2d2ff; float:right;">보통</span>
+                                </label>
+                                <input type="range" id="vn-speed-slider" min="10" max="90" step="10" style="width: 100%; cursor: pointer; direction: rtl;">
+                                <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #aaa; margin-top: 5px;">
+                                    <span>느림</span>
+                                    <span>빠름</span>
+                                </div>
+                            </div>
+
+                        </div>
+                        <!-- 탭 3: 라이브러리 (신규 추가) -->
+                        <div id="vn-tab-library" class="vn-tab-content">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="margin: 0; font-size: 1.2em; border-bottom: none;">📚 라이브러리</h3>
+                                <button id="vn-library-add-btn" class="vn-modal-button" style="background-color: #28a745;">+ 새로 만들기</button>
+                            </div>
+
+                            <!-- 라이브러리 목록 컨테이너 -->
+                            <div id="vn-library-container" style="background-color: #333; border-radius: 8px; padding: 20px; min-height: 300px; display: flex; flex-direction: column; gap: 10px; border: 1px solid #555;">
+                                <div style="text-align: center; color: #888; margin-top: 100px;">
+                                    저장된 라이브러리가 없습니다.
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                .vn-tab-btn { padding: 15px 20px; color: #888; cursor: pointer; border-left: 4px solid transparent; transition: all 0.2s; font-weight: bold; font-size: 15px; margin-bottom: 5px; }
+                .vn-tab-btn:hover { background-color: #2a2a2a; color: #ccc; }
+                .vn-tab-btn.active { background-color: #2c2c2c; color: white; border-left: 4px solid #1a73e8; background: linear-gradient(90deg, rgba(26,115,232,0.1) 0%, rgba(0,0,0,0) 100%); }
+                .vn-tab-content { display: none; }
+                .vn-tab-content.active { display: block; animation: vn-slide-in 0.3s ease-out; }
+                @keyframes vn-slide-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+                .vn-modal-button { background-color: #1a73e8; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+                .vn-modal-button:hover { background-color: #1765c7; }
+                .vn-pattern-input { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 8px; background-color: #444; color: white; border: 1px solid #666; border-radius: 4px; }
+
+                /* 슬라이더 커스텀 스타일 */
+                input[type=range] { -webkit-appearance: none; background: transparent; }
+                input[type=range]:focus { outline: none; }
+                input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 24px; border-radius: 50%; background: #1a73e8; cursor: pointer; margin-top: -10px; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+                input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: #555; border-radius: 3px; }
+
+                /* --- 라이브러리 카트리지 스타일 (포스터 비율 적용) --- */
+            .vn-library-grid {
+                display: grid;
+                /* 너비를 좁혀서 세로로 긴 느낌을 낼 수 있게 최소 너비를 줄임 (200px -> 160px) */
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+                gap: 20px;
+                padding: 10px;
+            }
+            .vn-cartridge {
+                background-color: #2a2a2a;
+                border: 1px solid #444;
+                border-radius: 8px;
+                overflow: hidden;
+                transition: transform 0.2s, box-shadow 0.2s;
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                /* 그림자 효과 강화 */
+                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            }
+            .vn-cartridge:hover {
+                transform: translateY(-8px);
+                box-shadow: 0 12px 20px rgba(0,0,0,0.5);
+                border-color: #1a73e8;
+                z-index: 10;
+            }
+            .vn-cartridge-cover {
+                /* [핵심] 높이를 대폭 늘려서 포스터 비율(약 2:3)을 만듦 */
+                height: 240px;
+                background-color: #1e1e1e;
+                background-size: cover;
+                background-position: center;
+                position: relative;
+                cursor: pointer;
+                border-bottom: 1px solid #333;
+            }
+            .vn-cartridge-cover::after {
+                content: '▶ Load';
+                position: absolute;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.6);
+                display: flex; justify-content: center; align-items: center;
+                color: white; font-weight: bold; font-size: 1.2em;
+                opacity: 0; transition: opacity 0.2s;
+                backdrop-filter: blur(2px);
+            }
+            .vn-cartridge-cover:hover::after { opacity: 1; }
+
+            .vn-cartridge-info { padding: 10px; flex: 1; display: flex; flex-direction: column; }
+            .vn-cartridge-title { font-weight: bold; margin-bottom: 5px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .vn-cartridge-id { font-size: 0.8em; color: #aaa; margin-bottom: 8px; font-family: monospace; }
+            .vn-cartridge-actions { margin-top: auto; display: flex; gap: 5px; }
+            .vn-btn-sm { flex: 1; border: none; padding: 5px; border-radius: 4px; cursor: pointer; font-size: 0.8em; color: white; transition: background 0.2s; }
+            .vn-btn-img { background-color: #555; } .vn-btn-img:hover { background-color: #666; }
+            .vn-btn-del { background-color: #c72c2c; } .vn-btn-del:hover { background-color: #a00000; }
+            .vn-empty-msg { text-align: center; color: #888; margin-top: 50px; width: 100%; }
+            </style>`;
+
             document.body.insertAdjacentHTML('beforeend', modalHTML); this.setupModalEventListeners();
         },
+
         setupModalEventListeners() {
             const self = this;
             document.getElementById('vn-modal-close').onclick = () => self.close();
+
+            // --- 탭 전환 로직 (신규) ---
+            const tabBtns = document.querySelectorAll('.vn-tab-btn');
+            tabBtns.forEach(btn => {
+                btn.onclick = () => {
+                    // 모든 탭 비활성화
+                    document.querySelectorAll('.vn-tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.vn-tab-content').forEach(c => c.classList.remove('active'));
+                    // 클릭한 탭 활성화
+                    btn.classList.add('active');
+                    document.getElementById(btn.dataset.tab).classList.add('active');
+                };
+            });
+
+            // --- 볼륨 슬라이더 이벤트 (신규) ---
+            const volSlider = document.getElementById('vn-vol-slider');
+            const volDisplay = document.getElementById('vn-vol-display');
+            volSlider.oninput = (e) => {
+                const val = parseFloat(e.target.value);
+                self.settings.globalVolume = val;
+                volDisplay.textContent = Math.round(val * 100) + "%";
+                self.save();
+                AudioManager.updateVolume(); // 오디오 매니저에 즉시 반영
+            };
+
+            // --- 텍스트 속도 슬라이더 이벤트 (신규) ---
+            const speedSlider = document.getElementById('vn-speed-slider');
+            const speedDisplay = document.getElementById('vn-speed-display');
+            speedSlider.oninput = (e) => {
+                const val = parseInt(e.target.value);
+                self.settings.typingSpeed = val;
+
+                let text = "보통";
+                if (val <= 20) text = "매우 빠름";
+                else if (val <= 40) text = "빠름";
+                else if (val >= 70) text = "느림";
+
+                speedDisplay.textContent = text + ` (${val}ms)`;
+                self.save();
+            };
+
+            // --- 기존 설정들의 이벤트 핸들러 유지 ---
             document.querySelectorAll('input[name="characterMode"]').forEach(radio => { radio.onchange = (e) => { self.settings.characterMode = e.target.value; self.save(); self.toggleModalSections(); }; });
             document.getElementById('vn-edit-ui-button').onclick = () => { self.close(); UIManager.toggleUiEditMode(true); };
             document.getElementById('vn-custom-bg-url-input').oninput = (e) => { self.settings.customBackgroundUrl = e.target.value; self.save(); };
             document.getElementById('vn-bg-pattern-input').oninput = (e) => { self.settings.backgroundPattern = e.target.value; self.save(); };
             document.getElementById('vn-char-pattern-input').oninput = (e) => { self.settings.characterPattern = e.target.value; self.save(); };
+
+            // 애니메이션 추가 버튼
             document.getElementById('vn-add-anim-rule-btn').onclick = () => { const trigger = document.getElementById('vn-anim-trigger-input').value.trim(); const animation = document.getElementById('vn-anim-type-select').value; if (!trigger) { alert('트리거 단어를 입력해주세요.'); return; } self.settings.customAnimations.push({ id: Date.now(), trigger, animation }); self.save(); self.renderAnimationRules(); document.getElementById('vn-anim-trigger-input').value = ''; };
-            document.getElementById('vn-export-anim-btn').onclick = () => { const dataStr = JSON.stringify(self.settings.customAnimations, null, 2); const blob = new Blob([dataStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'vn_animation_settings.json'; a.click(); URL.revokeObjectURL(url); };
+
+            // 내보내기 (Export) 버튼 로직 수정
+            document.getElementById('vn-export-anim-btn').onclick = () => {
+                const coverUrl = prompt("내보낼 파일에 저장할 '커버 이미지 URL'을 입력하세요 (선택사항):", "") || "";
+
+                // 템플릿용 예시 데이터 생성
+                const templateOpening = [
+                    {
+                        "title": "예시: 학교 복도 (제목을 수정하세요)",
+                        "content": "이곳에 오프닝 시나리오를 마크다운 형식으로 작성하세요."
+                    },
+                    {
+                        "title": "예시: 방과 후 (사용하지 않으면 이 항목을 지우거나 content를 비우세요)",
+                        "content": ""
+                    }
+                ];
+
+                const exportData = {
+                    meta: {
+                        storyId: getCurrentTargetId()?.id || 'manual',
+                        exportDate: new Date().toISOString(),
+                        version: "2.5", // 버전 업데이트
+                        coverUrl: coverUrl
+                    },
+                    settings: {
+                        animations: self.settings.customAnimations || [],
+                        bgm: self.settings.customBgmRules || []
+                    },
+                    // ★ [핵심] 빈 배열 대신 템플릿 배열을 넣어줍니다.
+                    opening: templateOpening
+                };
+
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `vn_preset_${exportData.meta.storyId}_template.json`; // 파일명에 template 표시
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // BGM 추가 버튼
+            document.getElementById('vn-add-bgm-btn').onclick = () => {
+                const trigger = document.getElementById('vn-bgm-trigger').value.trim();
+                const url = document.getElementById('vn-bgm-url').value.trim();
+                if (!trigger || !url) { alert('트리거 단어와 오디오 URL을 모두 입력해주세요.'); return; }
+                if (!self.settings.customBgmRules) self.settings.customBgmRules = [];
+                self.settings.customBgmRules.push({ id: Date.now(), trigger, audioUrl: url });
+                self.save();
+                self.renderBgmRules();
+                AudioManager.loadRules(self.settings.customBgmRules);
+                document.getElementById('vn-bgm-trigger').value = '';
+                document.getElementById('vn-bgm-url').value = '';
+            };
+
+            // --- [신규] 라이브러리 "+ 새로 만들기" 버튼 ---
+            const addLibBtn = document.getElementById('vn-library-add-btn');
+            if (addLibBtn) {
+                addLibBtn.onclick = () => {
+                    const name = prompt("이 설정(프리셋)의 이름을 입력해주세요:", "나의 설정");
+                    if (name === null) return;
+
+                    const currentData = {
+                        meta: { storyId: getCurrentTargetId()?.id || 'manual' },
+                        settings: {
+                            animations: self.settings.customAnimations || [],
+                            bgm: self.settings.customBgmRules || []
+                        }
+                    };
+
+                    const coverUrl = prompt("커버 이미지 URL이 있다면 입력해주세요 (취소 시 기본값):", "");
+                    LibraryManager.addPreset(currentData, name, coverUrl || '');
+                    document.querySelector('[data-tab="vn-tab-library"]').click();
+                };
+            }
+
+            // --- [수정됨] 통합 가져오기 (Import) ---
             const importInput = document.getElementById('vn-import-anim-input');
-            document.getElementById('vn-import-anim-btn').onclick = () => importInput.click();
-            importInput.onchange = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const importedRules = JSON.parse(event.target.result); if (Array.isArray(importedRules)) { self.settings.customAnimations = importedRules; self.save(); self.renderAnimationRules(); alert('설정을 성공적으로 가져왔습니다.'); } else { throw new Error('JSON is not an array.'); } } catch (err) { console.error("VN Engine Import Error:", err); alert('파일을 가져오는 데 실패했습니다. 파일 형식이 올바른지 확인해주세요. (F12 > Console 확인)'); } }; reader.readAsText(file); importInput.value = ''; };
+            const importBtn = document.getElementById('vn-import-anim-btn');
+
+            if (importBtn && importInput) {
+                importBtn.onclick = () => importInput.click();
+
+                // 파일 가져오기 (파일명을 카트리지 이름으로 사용)
+                importInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            let importedData;
+                            try { importedData = JSON.parse(event.target.result); }
+                            catch (jsonErr) { throw new Error("JSON 파일 형식이 올바르지 않습니다."); }
+
+                            const isNewFormat = importedData.settings && importedData.meta;
+                            const isOldFormat = Array.isArray(importedData);
+
+                            if (!isNewFormat && !isOldFormat) throw new Error("VN Engine 설정 파일이 아닙니다.");
+
+                            const fileNameWithoutExt = file.name.replace(/\.json$/i, '');
+                            const defaultName = fileNameWithoutExt;
+                            const savedCoverUrl = importedData.meta?.coverUrl || "";
+
+                            // [중요] 오프닝 데이터 추출 (파일에 없으면 빈 문자열)
+                            const openingData = importedData.opening || "";
+
+                            if (confirm(`파일을 읽었습니다!\n파일명: ${file.name}\n\n[확인] -> '라이브러리'에 저장합니다.\n[취소] -> 저장 안 하고 '즉시 적용'합니다.`)) {
+                                // 라이브러리에 저장
+                                LibraryManager.addPreset(importedData, defaultName, savedCoverUrl);
+                                document.querySelector('[data-tab="vn-tab-library"]').click();
+                            } else {
+                                // [취소] -> 즉시 적용 모드
+                                if (isNewFormat) {
+                                    self.settings.customAnimations = importedData.settings.animations || [];
+                                    self.settings.customBgmRules = importedData.settings.bgm || [];
+
+                                    // ★★★ [이 부분이 빠져 있었습니다] 오프닝 즉시 적용 ★★★
+                                    self.settings.openingScript = openingData;
+                                } else if (isOldFormat) {
+                                    self.settings.customAnimations = importedData;
+                                }
+
+                                self.save(); // 저장
+                                self.renderAnimationRules();
+                                self.renderBgmRules();
+                                AudioManager.loadRules(self.settings.customBgmRules);
+
+                                // 오프닝 유무 알려주기
+                                if(self.settings.openingScript) {
+                                    alert('설정이 적용되었습니다.\n(오프닝이 포함되어 있습니다. VN 시작 시 재생됩니다.)');
+                                } else {
+                                    alert('설정이 적용되었습니다.');
+                                }
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            alert('오류: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                    importInput.value = '';
+                };
+            }
+            // [신규] 라이브러리 클릭 이벤트 연결 (삭제/로드 버튼 작동용)
+            // HTML의 onclick 대신 자바스크립트로 직접 이벤트를 처리합니다.
+            const libContainer = document.getElementById('vn-library-container');
+            if (libContainer) {
+                libContainer.onclick = (e) => {
+                    // 클릭된 요소가 액션 버튼(또는 커버)인지 확인
+                    const target = e.target.closest('[data-action]');
+                    if (!target) return;
+
+                    const action = target.dataset.action;
+                    const id = target.dataset.id;
+
+                    if (action === 'delete') {
+                        LibraryManager.deletePreset(id);
+                    } else if (action === 'load') {
+                        LibraryManager.applyPreset(id);
+                    }
+                };
+            }
         },
+
+
         renderAnimationRules() {
             const listElement = document.getElementById('vn-animation-rules-list'); if (!listElement) return; listElement.innerHTML = '';
             this.settings.customAnimations.forEach(rule => { const li = document.createElement('li'); li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #444;'; li.innerHTML = `<span><strong style="color: #a2d2ff;">${rule.trigger}</strong> → ${ANIMATION_TYPES[rule.animation] || rule.animation}</span><button class="vn-delete-rule-btn" data-id="${rule.id}" style="background: #c70000; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 2px 6px;">삭제</button>`; listElement.appendChild(li); });
             listElement.querySelectorAll('.vn-delete-rule-btn').forEach(btn => { btn.onclick = (e) => { const ruleId = Number(e.target.dataset.id); this.settings.customAnimations = this.settings.customAnimations.filter(r => r.id !== ruleId); this.save(); this.renderAnimationRules(); }; });
         },
+
+        renderBgmRules() {
+            const listElement = document.getElementById('vn-bgm-rules-list'); if (!listElement) return; listElement.innerHTML = '';
+            const rules = this.settings.customBgmRules || [];
+            rules.forEach(rule => {
+                const li = document.createElement('li');
+                li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #444;';
+                const shortUrl = rule.audioUrl.length > 30 ? rule.audioUrl.substring(0, 27) + '...' : rule.audioUrl;
+                li.innerHTML = `<span><strong style="color: #ff9e9e;">${rule.trigger}</strong> ♪ ${shortUrl}</span><button class="vn-delete-bgm-btn" data-id="${rule.id}" style="background: #c70000; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 2px 6px;">삭제</button>`;
+                listElement.appendChild(li);
+            });
+            listElement.querySelectorAll('.vn-delete-bgm-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    const ruleId = Number(e.target.dataset.id);
+                    this.settings.customBgmRules = this.settings.customBgmRules.filter(r => r.id !== ruleId);
+                    this.save();
+                    this.renderBgmRules();
+                    AudioManager.loadRules(this.settings.customBgmRules);
+                };
+            });
+        },
+
         toggleModalSections() { const selectedMode = this.settings.characterMode; document.getElementById('vn-custom-bg-section').style.display = (selectedMode === 'single' || selectedMode === 'internalImage') ? 'block' : 'none'; document.getElementById('vn-multi-mode-section').style.display = (selectedMode === 'multi') ? 'block' : 'none'; document.getElementById('vn-custom-anim-section').style.display = (selectedMode === 'multi') ? 'block' : 'none'; },
-        open() { document.querySelector(`input[name="characterMode"][value="${this.settings.characterMode}"]`).checked = true; document.getElementById('vn-custom-bg-url-input').value = this.settings.customBackgroundUrl; document.getElementById('vn-bg-pattern-input').value = this.settings.backgroundPattern; document.getElementById('vn-char-pattern-input').value = this.settings.characterPattern; this.toggleModalSections(); this.renderAnimationRules(); document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'block'; },
+
+        open() {
+            // [수정] 창 열 때 모달 표시 방식을 flex로 변경 (중앙 정렬 위함)
+            document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'flex';
+
+            // 기존 설정값들 복원
+            document.querySelector(`input[name="characterMode"][value="${this.settings.characterMode}"]`).checked = true;
+            document.getElementById('vn-custom-bg-url-input').value = this.settings.customBackgroundUrl;
+            document.getElementById('vn-bg-pattern-input').value = this.settings.backgroundPattern;
+            document.getElementById('vn-char-pattern-input').value = this.settings.characterPattern;
+
+            // [신규] 슬라이더 값 복원
+            const vol = this.settings.globalVolume !== undefined ? this.settings.globalVolume : 0.5;
+            document.getElementById('vn-vol-slider').value = vol;
+            document.getElementById('vn-vol-display').textContent = Math.round(vol * 100) + "%";
+
+            const speed = this.settings.typingSpeed !== undefined ? this.settings.typingSpeed : 40;
+            document.getElementById('vn-speed-slider').value = speed;
+            let text = "보통";
+            if (speed <= 20) text = "매우 빠름"; else if (speed <= 40) text = "빠름"; else if (speed >= 70) text = "느림";
+            document.getElementById('vn-speed-display').textContent = text + ` (${speed}ms)`;
+
+            this.toggleModalSections();
+            this.renderAnimationRules();
+            this.renderBgmRules();
+            // 창을 열 때 라이브러리 데이터를 불러오고 화면을 그립니다.
+            LibraryManager.load();
+            LibraryManager.render();
+        },
         close() { document.getElementById(DOM_IDS.SETTINGS_MODAL).style.display = 'none'; },
     };
+
+    // --- [신규] 세션 ID 추출 헬퍼 ---
+    // URL의 맨 뒤에 있는 ID(세션 ID)를 가져옵니다.
+    function getCurrentSessionId() {
+        const path = window.location.pathname;
+        // 예: .../episodes/693e93e06029d526c1767aad -> 693e93e06029d526c1767aad 추출
+        // 예: .../chats/abcde... -> abcde... 추출
+        const match = path.match(/\/([a-f0-9]{24})$/);
+        return match ? match[1] : null;
+    }
+
+    // --- [신규] 오프닝 시청 기록 관리자 ---
+    const OpeningHistoryManager = {
+        storageKey: 'vnOpeningHistory', // 저장소 키 이름
+        history: [], // 본 세션 ID 목록
+
+        load() {
+            try {
+                const data = localStorage.getItem(this.storageKey);
+                this.history = data ? JSON.parse(data) : [];
+            } catch (e) {
+                this.history = [];
+            }
+        },
+
+        save() {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.history));
+        },
+
+        // 해당 세션 ID가 이미 기록에 있는지 확인
+        hasSeen(sessionId) {
+            if (!sessionId) return false;
+            return this.history.includes(sessionId);
+        },
+
+        // 해당 세션 ID를 '봄'으로 처리하고 저장
+        markAsSeen(sessionId) {
+            if (!sessionId) return;
+            if (!this.history.includes(sessionId)) {
+                this.history.push(sessionId);
+                this.save();
+                console.log(`VN Engine: 세션(${sessionId}) 오프닝 시청 기록 저장됨.`);
+            }
+        }
+    };
+
+    // 스크립트 시작 시 기록 불러오기
+    OpeningHistoryManager.load();
 
     // --- 스타일 생성 ---
     function generateStyles(settings) {
@@ -95,16 +927,13 @@
                 display: flex;
                 justify-content: center;
                 align-items: flex-end;
-                /* 애니메이션 효과 추가 (밝기, 크기, 위치 변화) */
                 transition: opacity 0.4s, transform 0.4s, left 0.4s ease-in-out, filter 0.4s ease-in-out;
                 transform-origin: bottom center;
             }
-            /* 말하는 중: 약간 커지고 밝아짐, 제일 앞으로 나옴 */
             .vn-character-slot.speaking {
                 transform: scale(1.05);
                 z-index: 10;
             }
-            /* 듣는 중: 약간 작아지고 어두워짐 */
             .vn-character-slot.listening {
                 transform: scale(0.95);
                 filter: brightness(0.6);
@@ -120,7 +949,15 @@
              .vn-character-cg { max-width: 100%; max-height: 100%; object-fit: contain; transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; opacity: 0; transform: scale(0.95); }
              .vn-character-cg.visible { opacity: 1; transform: scale(1); }`;
         }
+
         return `
+            /* [수정] 설정 모달을 최상단으로 올림 (탭 메뉴 가림 방지) */
+            #${DOM_IDS.SETTINGS_MODAL} { z-index: 200000 !important; }
+
+            /* [추가] 슬라이더(Range Input) 공통 스타일 */
+            input[type=range] { -webkit-appearance: none; background: transparent; }
+            input[type=range]:focus { outline: none; }
+
             #${DOM_IDS.CONTAINER} { position: fixed !important; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 99990; pointer-events: none; display: none; }
             #${DOM_IDS.CONTAINER}.visible { display: block !important; }
             #${DOM_IDS.BACKGROUND} { width: 100%; height: 100%; background-size: cover; background-position: center; transition: background-image 0.5s ease-in-out; z-index: 0; }
@@ -140,7 +977,7 @@
             #${DOM_IDS.SETTINGS_BUTTON}:hover { background-color: #555; }
             #${DOM_IDS.INPUT_BUTTON} {
                 position: absolute;
-                top: -38px; /* 대화창 바로 위에 위치 */
+                top: -38px;
                 right: 0;
                 z-index: 5;
                 background-color: #1a73e8;
@@ -157,129 +994,51 @@
             }
             #${DOM_IDS.INPUT_BUTTON}:hover { background-color: #1765c7; }
             #${DOM_IDS.INPUT_MODAL} {
-                display: none; /* JS로 켜고 끔 */
+                display: none;
                 position: absolute;
-
-                /* 핵심: 대화창 바로 위에 붙이기 */
                 bottom: 100%;
                 left: 0;
                 width: 100%;
-
-                /* 디자인: 어두운 회색 바 */
                 background-color: #2c2c2c;
                 border: 1px solid #555;
-                border-bottom: none; /* 대화창과 연결된 느낌을 위해 아래 테두리 제거 */
-                border-radius: 8px 8px 0 0; /* 위쪽 모서리만 둥글게 */
+                border-bottom: none;
+                border-radius: 8px 8px 0 0;
                 padding: 8px;
                 box-sizing: border-box;
-                z-index: 20; /* 입력 버튼보다 아래, 캐릭터보다는 위 */
-
-                /* 내용물 가로 정렬 */
+                z-index: 20;
                 flex-direction: row;
                 align-items: center;
                 gap: 10px;
                 box-shadow: 0 -4px 10px rgba(0,0,0,0.2);
             }
-
-            /* 기존 클래스 재활용: 내부 컨텐츠 정렬 */
-            .vn-input-modal-content {
-                display: flex;
-                flex-direction: row; /* 가로로 배치 */
-                width: 100%;
-                gap: 10px;
-                background: transparent; /* 배경 투명하게 (부모 색 따름) */
-                box-shadow: none;
-                padding: 0;
-            }
-
-            /* 제목은 바 형태에선 필요 없으니 숨김 */
+            .vn-input-modal-content { display: flex; flex-direction: row; width: 100%; gap: 10px; background: transparent; box-shadow: none; padding: 0; }
             .vn-input-modal-title { display: none; }
-
-            /* [수정됨 3] 텍스트 입력칸 디자인 */
             .vn-modal-textarea {
-                flex-grow: 1; /* 남은 공간 꽉 채우기 */
-                height: 36px; /* 높이 고정 (한 줄 느낌) */
-                box-sizing: border-box;
-                padding: 8px 10px;
-                background-color: #444;
-                color: white;
-                border: 1px solid #666;
-                border-radius: 4px;
-                resize: none; /* 크기 조절 끄기 */
-                font-size: 0.95em;
-                font-family: inherit;
-                line-height: 1.2;
+                flex-grow: 1; height: 36px; box-sizing: border-box; padding: 8px 10px;
+                background-color: #444; color: white; border: 1px solid #666; border-radius: 4px;
+                resize: none; font-size: 0.95em; font-family: inherit; line-height: 1.2;
             }
             .vn-modal-textarea:focus { outline: 1px solid #1a73e8; }
-
-            /* 버튼 그룹 */
-            .vn-input-modal-buttons {
-                display: flex;
-                gap: 5px;
-                flex-shrink: 0; /* 공간 좁아져도 버튼 크기 유지 */
-            }
-
-            /* 버튼 디자인 */
-            .vn-modal-button-cancel {
-                background-color: #555;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 0 12px;
-                height: 36px;
-                cursor: pointer;
-                font-weight: bold;
-                font-size: 13px;
-            }
-            .vn-modal-button-send {
-                background-color: #1a73e8;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 0 15px;
-                height: 36px;
-                cursor: pointer;
-                font-weight: bold;
-                font-size: 13px;
-            }
+            .vn-input-modal-buttons { display: flex; gap: 5px; flex-shrink: 0; }
+            .vn-modal-button-cancel { background-color: #555; color: white; border: none; border-radius: 4px; padding: 0 12px; height: 36px; cursor: pointer; font-weight: bold; font-size: 13px; }
+            .vn-modal-button-send { background-color: #1a73e8; color: white; border: none; border-radius: 4px; padding: 0 15px; height: 36px; cursor: pointer; font-weight: bold; font-size: 13px; }
             .vn-modal-button-send:hover { background-color: #1765c7; }
             .vn-modal-button-cancel:hover { background-color: #666; }
 
             #${DOM_IDS.LOG_BUTTON} {
-            position: absolute;
-            top: -38px; /* 입력 버튼과 동일한 높이 */
-            right: 95px; /* 입력 버튼('대화 입력') 너비 + 간격 만큼 왼쪽으로 이동 */
-            z-index: 5;
-            background-color: #555; /* 기본 버튼 색상 */
-            color: white;
-            border: 1px solid #777;
-            border-radius: 6px;
-            padding: 6px 15px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            transition: background-color 0.2s;
-            pointer-events: auto;
+                position: absolute; top: -38px; right: 95px; z-index: 5;
+                background-color: #555; color: white; border: 1px solid #777; border-radius: 6px;
+                padding: 6px 15px; font-size: 14px; font-weight: bold; cursor: pointer;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: background-color 0.2s; pointer-events: auto;
             }
             #${DOM_IDS.LOG_BUTTON}:hover { background-color: #666; }
 
             #${DOM_IDS.LOADING_INDICATOR} {
-            position: absolute;
-            top: 15px;
-            right: 20px;
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: vn-spin 1s ease-in-out infinite;
-            z-index: 4; /* 대화 텍스트보다 위에, 다른 버튼보다는 아래에 위치 */
-            display: none; /* 평소에는 숨겨둠 */
+                position: absolute; top: 15px; right: 20px; width: 24px; height: 24px;
+                border: 3px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top-color: #fff;
+                animation: vn-spin 1s ease-in-out infinite; z-index: 4; display: none;
             }
-            @keyframes vn-spin {
-            to { transform: rotate(360deg); }
-            }
+            @keyframes vn-spin { to { transform: rotate(360deg); } }
 
             #${DOM_IDS.BACK_BUTTON} { position: absolute; bottom: 15px; right: 20px; font-size: 2em; color: #888; cursor: pointer; transition: color 0.2s; display: none; }
             #${DOM_IDS.BACK_BUTTON}:hover { color: #ccc; }
@@ -289,7 +1048,7 @@
             .vn-log-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
             .vn-log-modal-title { margin: 0; font-size: 1.5em; }
             .vn-log-modal-close { font-size: 2em; font-weight: bold; color: #aaa; cursor: pointer; }
-            .vn-log-modal-body { flex-grow: 1; overflow-y: auto; padding-right: 15px; } /* 스크롤바 공간 확보 */
+            .vn-log-modal-body { flex-grow: 1; overflow-y: auto; padding-right: 15px; }
             .vn-log-entry { margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 15px; }
             .vn-log-char { color: #a2d2ff; font-size: 1.1em; }
             .vn-log-content { margin: 5px 0 0 0; font-size: 1.2em; line-height: 1.6; }
@@ -301,13 +1060,39 @@
             @keyframes vibrate { 0% { transform: translate(0); } 20% { transform: translate(-1px, 1px); } 40% { transform: translate(-1px, -1px); } 60% { transform: translate(1px, 1px); } 80% { transform: translate(1px, -1px); } 100% { transform: translate(0); } } .vn-anim-vibrate { animation: vibrate 0.2s linear infinite; animation-iteration-count: 3; }
             @keyframes fall-left {
                 0% { transform: rotate(0deg); }
-                30% { transform: rotate(-5deg); } /* 왼쪽 기우뚱 */
-                50% { transform: rotate(5deg); }  /* 오른쪽 반동 */
-                100% { transform: rotate(-90deg) translateY(10px); } /* 완전히 누움 (투명도 삭제됨) */
+                30% { transform: rotate(-5deg); }
+                50% { transform: rotate(5deg); }
+                100% { transform: rotate(-90deg) translateY(10px); }
             }
             .vn-anim-fall-left {
                 transform-origin: bottom center;
-                animation: fall-left 2s ease-in forwards; /* forwards: 끝난 상태 유지 */
+                animation: fall-left 2s ease-in forwards;
+            }
+
+            /* --- 토스트 알림 메시지 --- */
+            #vn-toast-message {
+                visibility: hidden;
+                min-width: 250px;
+                background-color: rgba(50, 50, 50, 0.9);
+                color: #fff;
+                text-align: center;
+                border-radius: 50px;
+                padding: 16px;
+                position: fixed;
+                z-index: 100001;
+                left: 50%;
+                bottom: 30px;
+                transform: translateX(-50%);
+                font-size: 15px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                border: 1px solid #1a73e8;
+                opacity: 0;
+                transition: opacity 0.5s, bottom 0.5s;
+            }
+            #vn-toast-message.show {
+                visibility: visible;
+                opacity: 1;
+                bottom: 50px;
             }
         `;
     }
@@ -354,7 +1139,7 @@
     const StageManager = {
         cueSheet: [], currentIndex: -1, firstTextCueIndex: -1, isTyping: false, typingTimer: null, isVisible: false, isFinished: true,
 
-start(rawText) {
+        start(rawText) {
             UIManager.hideBackButton();
 
             // 1. 일단 텍스트를 분석해서 큐시트를 만듭니다.
@@ -422,7 +1207,24 @@ start(rawText) {
         previous() { if (this.isTyping) this.skipTyping(); if (this.currentIndex <= this.firstTextCueIndex) return; for (let i = this.currentIndex - 1; i >= 0; i--) { const cue = this.cueSheet[i]; if (cue.type === 'dialogue' || cue.type === 'action') { this.currentIndex = i; this.processCue(cue); if (this.currentIndex < this.firstTextCueIndex) UIManager.hideBackButton(); return; } } },
         hide() { if (!this.isVisible) return; UIManager.hideAll(); this.isVisible = false; this.isFinished = true; },
         formatText(text) { return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); },
-        type(element, text) { element.classList.add('typing-effect'); this.isTyping = true; let i = 0; element.innerHTML = ''; this.typingTimer = setInterval(() => { if (i < text.length) { element.innerHTML += text.charAt(i); i++; } else { this.skipTyping(); } }, 40); },
+        type(element, text) {
+            element.classList.add('typing-effect');
+            this.isTyping = true;
+            let i = 0;
+            element.innerHTML = '';
+
+            // [수정] 설정된 타이핑 속도 사용 (기본값 40)
+            const speed = SettingsManager.settings.typingSpeed || 40;
+
+            this.typingTimer = setInterval(() => {
+                if (i < text.length) {
+                    element.innerHTML += text.charAt(i);
+                    i++;
+                } else {
+                    this.skipTyping();
+                }
+            }, speed);
+        },
         skipTyping() { clearInterval(this.typingTimer); this.isTyping = false; const dialogueElement = UIManager.getDialogueTextElement(); if (dialogueElement) dialogueElement.classList.remove('typing-effect'); const cue = this.cueSheet[this.currentIndex]; if (cue && (cue.type === 'action' || cue.type === 'dialogue')) { dialogueElement.innerHTML = this.formatText(cue.content).replace(/\n/g, '<br>'); } },
         async processCue(cue) {
             switch (cue.type) {
@@ -432,6 +1234,8 @@ start(rawText) {
                     break;
                 case 'background_image':
                     UIManager.updateBackgroundImage(cue.url);
+                    // 배경 변경 시 BGM 체크
+                    AudioManager.checkAndPlay(cue.url);
                     // 배경 변경 시 단일 모드 캐릭터 숨김
                     if (SettingsManager.settings.characterMode !== 'multi') {
                         UIManager.updateSingleCharacter('off');
@@ -632,7 +1436,7 @@ start(rawText) {
         showBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'block'; },
         hideBackButton() { if(this.elements.backButton) this.elements.backButton.style.display = 'none'; },
         parseCharacterInfoFromUrl(url) { if (!url || url.toLowerCase() === 'off') return null; const filename = url.substring(url.lastIndexOf('/') + 1).split('.')[0]; const match = filename.match(/^([a-zA-Z_]+[a-zA-Z])([0-9_].*)?$/) || filename.match(/^([a-zA-Z]+)([0-9_].*)?$/); if (match && match[1]) { return { id: match[1], fullId: filename }; } return { id: filename, fullId: filename }; },
-        updateSingleCharacter(url) { const img = this.elements.cgSingle; if (!img) return; if (url.toLowerCase() === 'off') { img.classList.remove('visible'); setTimeout(() => { if (!img.classList.contains('visible')) img.src = ''; }, 300); } else { if (img.src !== url) { img.src = url; } if (!img.classList.contains('visible')) { img.classList.add('visible'); } } },
+        updateSingleCharacter(url) { const img = this.elements.cgSingle; if (!img) return; if (url.toLowerCase() === 'off') { img.classList.remove('visible'); setTimeout(() => { if (!img.classList.contains('visible')) img.src = ''; }, 300); } else { if (img.src !== url) { img.src = url; } if (!img.classList.contains('visible')) { img.classList.add('visible'); } AudioManager.checkAndPlay(url); } },
         applyCustomBackground() { const { characterMode, customBackgroundUrl } = SettingsManager.settings; if ((characterMode === 'single' || characterMode === 'internalImage') && customBackgroundUrl) this.updateBackgroundImage(customBackgroundUrl); },
         updateBackgroundImage(url) { if(this.elements.background && this.elements.background.style.backgroundImage !== `url("${url}")`) { this.elements.background.style.backgroundImage = `url("${url}")`; } },
         updateStatusWindow(text) { if(this.elements.statusWindow) this.elements.statusWindow.textContent = text; },
@@ -690,11 +1494,78 @@ start(rawText) {
         }
     });
 },
-
-createInputModal() {
-    // 혹시라도 이전에 만들어진 모달이 남아있으면 삭제 (중복 방지)
-    const oldModal = document.getElementById(DOM_IDS.INPUT_MODAL);
+        showOpeningSelectionModal(scripts, onSelect) {
+    // 기존 모달 제거 (중복 방지)
+    const oldModal = document.getElementById('vn-opening-select-modal');
     if (oldModal) oldModal.remove();
+
+    // 버튼 목록 생성
+    let buttonsHtml = '';
+    scripts.forEach((script, index) => {
+        // 제목이 비어있으면 내용 앞부분을 잘라서 제목으로 사용
+        const title = script.title || (script.content.substring(0, 20) + "...");
+        buttonsHtml += `<button class="vn-opening-option-btn" data-index="${index}">${title}</button>`;
+    });
+
+    // 모달 HTML 구조
+    const modalHtml = `
+        <div id="vn-opening-select-modal" style="
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 200001;
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column; color: white; font-family: 'Pretendard', sans-serif;">
+
+            <div style="background: #2c2c2c; padding: 30px; border-radius: 12px; border: 1px solid #555; width: 400px; max-width: 90%; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <h2 style="margin-top: 0; margin-bottom: 20px; color: #a2d2ff;">시작 설정 선택</h2>
+                <p style="color: #ccc; margin-bottom: 20px; font-size: 0.9em;">원하는 오프닝 시나리오를 선택해주세요.</p>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto;">
+                    ${buttonsHtml}
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid #444; margin: 20px 0;">
+
+                <button id="vn-opening-skip-btn" style="
+                    background: transparent; border: 1px solid #666; color: #aaa;
+                    padding: 8px 16px; border-radius: 6px; cursor: pointer; width: 100%;">
+                    선택 안 함 (바로 시작)
+                </button>
+            </div>
+        </div>
+        <style>
+            .vn-opening-option-btn {
+                background: #444; color: white; border: none; padding: 12px;
+                border-radius: 6px; cursor: pointer; font-size: 1.1em; text-align: left;
+                transition: background 0.2s, transform 0.1s;
+            }
+            .vn-opening-option-btn:hover { background: #1a73e8; transform: translateX(5px); }
+        </style>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const modal = document.getElementById('vn-opening-select-modal');
+
+    // 오프닝 버튼 클릭 이벤트
+    modal.querySelectorAll('.vn-opening-option-btn').forEach(btn => {
+        btn.onclick = () => {
+            const index = parseInt(btn.dataset.index);
+            modal.remove();
+            onSelect(scripts[index]); // 선택된 스크립트 객체 전달
+        };
+    });
+
+    // 스킵 버튼 클릭 이벤트
+    document.getElementById('vn-opening-skip-btn').onclick = () => {
+        modal.remove();
+        onSelect(null); // 선택 없음
+    };
+        },
+
+        createInputModal() {
+            // 혹시라도 이전에 만들어진 모달이 남아있으면 삭제 (중복 방지)
+            const oldModal = document.getElementById(DOM_IDS.INPUT_MODAL);
+            if (oldModal) oldModal.remove();
 
     // 입력바 HTML 생성
     const modalHTML = `
@@ -732,25 +1603,25 @@ createInputModal() {
     }
 },
 
-toggleInputModal(show) {
-    const modal = document.getElementById(DOM_IDS.INPUT_MODAL);
-    if (!modal) {
-        // 모달이 없으면 다시 생성 시도
-        this.createInputModal();
-        return;
-    }
+        toggleInputModal(show) {
+            const modal = document.getElementById(DOM_IDS.INPUT_MODAL);
+            if (!modal) {
+                // 모달이 없으면 다시 생성 시도
+                this.createInputModal();
+                return;
+            }
 
-    if (show) {
-        modal.style.display = 'flex'; // 보이게 설정
-        const t = document.getElementById('vn-modal-textarea');
-        if (t) {
-            t.value = '';
-            t.focus();
-        }
-    } else {
-        modal.style.display = 'none'; // 숨김
-    }
-},
+            if (show) {
+                modal.style.display = 'flex'; // 보이게 설정
+                const t = document.getElementById('vn-modal-textarea');
+                if (t) {
+                    t.value = '';
+                    t.focus();
+                }
+            } else {
+                modal.style.display = 'none'; // 숨김
+            }
+        },
         sendMessage() {
             const textarea = document.getElementById('vn-modal-textarea');
             const message = textarea.value.trim();
@@ -798,30 +1669,59 @@ toggleInputModal(show) {
     modal.addEventListener('click', (e) => {
         if (e.target.id === DOM_IDS.LOG_MODAL) this.toggleLogModal(false);
     });
-},
+        },
 
-// toggleLogModal 함수를 UIManager 객체 내부에 새로 추가 (createLogModal 함수 밑에 추가)
+        // toggleLogModal 함수를 UIManager 객체 내부에 새로 추가 (createLogModal 함수 밑에 추가)
 
         toggleLogModal(show) {
             const modal = document.getElementById(DOM_IDS.LOG_MODAL);
-    if (!modal) return;
+            if (!modal) return;
 
-    if (show) {
+            if (show) {
         const body = document.getElementById('vn-log-modal-body');
         body.innerHTML = LogManager.render(); // LogManager를 통해 렌더링
         modal.style.display = 'flex';
         // 모달을 연 후 스크롤을 맨 아래로 이동
         setTimeout(() => { body.scrollTop = body.scrollHeight; }, 0);
-    } else {
+            } else {
         modal.style.display = 'none';
-    }
-},
+            }
+        },
     };
 
     // --- 데이터 패쳐 및 전역 로직 ---
     class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } }
     function extractCookie(key) { const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`)); return e ? decodeURIComponent(e[1]) : null; }
-    async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } }
+    function authFetch(method, url, body) {
+        return new Promise((resolve, reject) => {
+            const headers = {
+                'Authorization': `Bearer ${extractCookie("access_token")}`,
+                'Content-Type': 'application/json'
+            };
+
+            GM_xmlhttpRequest({
+                method: method,
+                url: url,
+                headers: headers,
+                data: body ? JSON.stringify(body) : null,
+                onload: function(response) {
+                    if (response.status >= 200 && response.status < 300) {
+                        try {
+                            const result = JSON.parse(response.responseText);
+                            resolve(result);
+                        } catch (e) {
+                            reject(new Error("JSON 파싱 실패"));
+                        }
+                    } else {
+                        reject(new Error(`HTTP 요청 실패 (${response.status})`));
+                    }
+                },
+                onerror: function(err) {
+                    reject(new Error(`네트워크 오류: ${err.statusText || '알 수 없음'}`));
+                }
+            });
+        });
+    }
     class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
 
     let lastMessageId = null, isChecking = false, isEngineActive = false;
@@ -954,18 +1854,95 @@ function startUiObserver() {
     function toggleVNEngine() {
         isEngineActive = !isEngineActive;
         const button = document.getElementById(DOM_IDS.START_BUTTON);
+
         if (button) {
             if (isEngineActive) {
-                button.textContent = 'VN 종료'; button.classList.add('active'); startRealtimeChecker();
+                // [VN 시작 상태]
+                button.textContent = 'VN 종료';
+                button.classList.add('active');
+
+                // ★ [핵심 변경] 오프닝 여부와 상관없이 실시간 감지부터 즉시 시작합니다.
+                // (오류로 오프닝이 멈춰도 감지기는 계속 돌아갑니다)
+                console.log("VN Engine: 실시간 감지 루프를 즉시 시작합니다.");
+                startRealtimeChecker();
+
+                // --- 오프닝 재생 로직 (멀티 오프닝 대응) ---
+                const openingScripts = SettingsManager.settings.openingScripts || [];
+                const sessionId = getCurrentSessionId(); // 현재 세션 ID
+
+                // 오프닝 재생 조건: 스크립트 있음 AND (세션ID 없거나 OR 안 본 세션임)
+                const hasSeen = sessionId && OpeningHistoryManager.hasSeen(sessionId);
+
+                // 오프닝 재생 헬퍼 함수
+                const playOpening = (scriptContent) => {
+                    console.log("VN Engine: 오프닝 재생 시작");
+                    if (sessionId) OpeningHistoryManager.markAsSeen(sessionId); // 시청 기록 저장
+                    StageManager.start(scriptContent);
+                };
+
+                if (openingScripts.length > 0 && !hasSeen) {
+                    if (openingScripts.length === 1) {
+                         // 1. 오프닝이 1개일 때 -> 기존처럼 바로 재생
+                         playOpening(openingScripts[0].content);
+                    } else {
+                        // 2. 오프닝이 2개 이상일 때 -> 선택 모달 띄우기
+                        UIManager.showOpeningSelectionModal(openingScripts, (selectedScript) => {
+                            if (selectedScript) {
+                                playOpening(selectedScript.content);
+                            } else {
+                                console.log("VN Engine: 오프닝 선택 취소 (바로 시작)");
+                                // 선택 안 함을 눌러도, 다음에 또 묻지 않으려면 '본 것'으로 처리 (취향따라 삭제 가능)
+                                if (sessionId) OpeningHistoryManager.markAsSeen(sessionId);
+                            }
+                        });
+                    }
+                } else {
+                    console.log("VN Engine: 오프닝 없음 또는 이미 시청함 -> 스킵");
+                }
+                // [수정 끝] -----------------
+
             } else {
-                button.textContent = 'VN 시작'; button.classList.remove('active'); stopRealtimeChecker();
+                // [VN 종료 상태]
+                button.textContent = 'VN 시작';
+                button.classList.remove('active');
+
+                stopRealtimeChecker();
+                StageManager.hide();
+                AudioManager.stopAll(); // 음악도 같이 끔
+
+                // [수정 시작] ---------------
+                // 혹시 선택창이 떠 있다면 닫기
+                const modal = document.getElementById('vn-opening-select-modal');
+                if (modal) modal.remove();
+                // [수정 끝] -----------------
             }
         }
     }
-    // --- 스크립트 초기화 ---
-    console.log("Visual Novel Engine V1.5 (Complete & Stable) 로드됨.");
+
+    // --- 스크립트 초기화 및 URL 감지 ---
+    console.log("Visual Novel Engine V3 Beta 로드됨.");
     SettingsManager.load();
     UIManager.setup();
-    let lastUrl = location.href; new MutationObserver(() => { const url = location.href; if (url !== lastUrl) { lastUrl = url; if(isEngineActive) { toggleVNEngine(); } } }).observe(document.body, { subtree: true, childList: true });
+
+// --- URL 감지 및 자동 로드 ---
+    let lastUrl = location.href;
+    new MutationObserver(() => {
+        const url = location.href;
+        if (url !== lastUrl) {
+            // [간결화된 ID 추출] URL에서 숫자+영어 24자리(ID)만 쏙 뽑아냅니다.
+            const getId = (u) => (u.match(/[a-f0-9]{24}/) || [])[0];
+            const oldId = getId(lastUrl);
+            const newId = getId(url);
+
+            lastUrl = url; // 주소 업데이트
+
+            // [핵심 조건] 엔진이 켜져있고 + 이전 ID도 있었고 + 새 ID도 있는데 + 둘이 다르면? -> 방 이동으로 판단!
+            if (isEngineActive && oldId && newId && oldId !== newId) {
+                toggleVNEngine();
+            }
+
+            setTimeout(() => LibraryManager.checkAutoLoad(), 500);
+        }
+    }).observe(document.body, { subtree: true, childList: true });
 
 })();
