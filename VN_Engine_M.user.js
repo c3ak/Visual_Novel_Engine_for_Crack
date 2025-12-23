@@ -1,11 +1,14 @@
 // ==UserScript==
-// @name         Visual Novel Engine V2.0_mobile
+// @name         Visual Novel Engine V2.1_mobile
 // @namespace    http://tampermonkey.net/
-// @version      2.0-mobile-beta
+// @version      2.1-mobile-beta
 // @description  향상된 몰입감을 위한 비주얼 노벨 UI 스크립트의 모바일 버전 입니다.
 // @author       agetion(c3ak)
 // @match        *://crack.wrtn.ai/*
+// @connect      contents-api.wrtn.ai
+// @connect      raw.githubusercontent.com
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
 // @run-at       document-idle
 // @updateURL    https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M.user.js
 // @downloadURL  https://github.com/c3ak/Visual_Novel_Engine_for_Crack/raw/refs/heads/main/VN_Engine_M.user.js
@@ -448,7 +451,7 @@
                             </div>
                             <!-- 볼륨 기능은 나중에 오디오 매니저 추가 시 작동 -->
                             <div class="vn-setting-option">
-                                <label>볼륨 (준비중) <span id="vn-vol-display" style="float:right; color:#a2d2ff;">50%</span></label>
+                                <label>볼륨 <span id="vn-vol-display" style="float:right; color:#a2d2ff;">50%</span></label>
                                 <input type="range" id="vn-vol-slider" min="0" max="1" step="0.1" style="width:100%;">
                             </div>
                         </div>
@@ -1786,9 +1789,40 @@ showOpeningSelectionModal(scripts, onSelect) {
 // --- 데이터 패쳐 및 전역 로직 ---
     class PlatformMessage { constructor(id, role, content) { this.id = id; this.role = role; this.content = content; } }
     function extractCookie(key) { const e = document.cookie.match(new RegExp(`(?:^|; )${key.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1")}=([^;]*)`)); return e ? decodeURIComponent(e[1]) : null; }
-    async function authFetch(method, url, body) { try { const param = { method: method, headers: { 'Authorization': `Bearer ${extractCookie("access_token")}`, 'Content-Type': 'application/json' } }; if (body) param.body = JSON.stringify(body); const result = await fetch(url, param); if (!result.ok) { return new Error(`HTTP 요청 실패 (${result.status})`); } return await result.json(); } catch (t) { return new Error(`알 수 없는 오류 (${t.message})`); } }
+    function authFetch(method, url, body) {
+        return new Promise((resolve, reject) => {
+            const headers = {
+                'Authorization': `Bearer ${extractCookie("access_token")}`,
+                'Content-Type': 'application/json'
+            };
+
+            GM_xmlhttpRequest({
+                method: method,
+                url: url,
+                headers: headers,
+                data: body ? JSON.stringify(body) : null,
+                onload: function(response) {
+                    if (response.status >= 200 && response.status < 300) {
+                        try {
+                            const result = JSON.parse(response.responseText);
+                            resolve(result);
+                        } catch (e) {
+                            reject(new Error("JSON 파싱 실패"));
+                        }
+                    } else {
+                        reject(new Error(`HTTP 요청 실패 (${response.status})`));
+                    }
+                },
+                onerror: function(err) {
+                    reject(new Error(`네트워크 오류: ${err.statusText || '알 수 없음'}`));
+                }
+            });
+        });
+    }
     class CrackMessageFetcher { constructor(chatId) { this.chatId = chatId; } async fetch(limit = 10) { const messages = []; const url = `https://contents-api.wrtn.ai/character-chat/v3/chats/${this.chatId}/messages?limit=${limit}`; const fetchResult = await authFetch("GET", url); if (fetchResult instanceof Error) throw fetchResult; const rawMessages = fetchResult.data?.list ?? fetchResult.data?.messages; if (!rawMessages) throw new Error("메시지를 가져오는 데 실패하였습니다."); for (let msg of rawMessages) { messages.push(new PlatformMessage(msg._id, msg.role, msg.content)); } return messages.reverse(); } }
+
     let lastMessageId = null, isChecking = false, isEngineActive = false;
+    let generationStopTime = null;
     let pollingTimer = null, uiObserver = null;
     let stopDelayTimer = null;
     let isHighSpeedMode = false;
@@ -2003,7 +2037,7 @@ function stopRealtimeChecker() {
     }
 
     // --- 스크립트 초기화 ---
-    console.log("VN Engine V2.0_mobile 로드됨.");
+    console.log("Visual Novel Engine V1.5 (UI-Edit-Fix) 로드됨.");
     SettingsManager.load();
     UIManager.setup();
     // --- URL 감지 및 자동 로드 ---
