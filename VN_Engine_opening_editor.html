@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VN Engine 통합 에디터</title>
+    <style>
+        /* --- [기본 스타일] --- */
+        :root {
+            --bg-color: #1e1e1e;
+            --panel-color: #2c2c2c;
+            --input-bg: #383838;
+            --text-color: #e0e0e0;
+            --accent-color: #1a73e8;
+            --accent-hover: #1765c7;
+            --border-color: #555;
+            --danger-color: #c72c2c;
+            --preview-color: #28a745;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Pretendard', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* 헤더 & 탭 */
+        header { background-color: var(--panel-color); padding: 10px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        h1 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 10px; }
+        .logo-icon { font-size: 1.3rem; }
+        
+        .nav-tabs { display: flex; background: #222; border-bottom: 1px solid var(--border-color); }
+        .nav-tab { padding: 12px 20px; cursor: pointer; color: #888; font-weight: bold; border-right: 1px solid #333; transition: all 0.2s; }
+        .nav-tab:hover { background: #2a2a2a; color: #ccc; }
+        .nav-tab.active { background: var(--panel-color); color: white; border-top: 3px solid var(--accent-color); }
+
+        /* 공통 버튼 */
+        .btn { background-color: var(--accent-color); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.9rem; transition: background 0.2s; }
+        .btn:hover { background-color: var(--accent-hover); }
+        .btn-outline { background: transparent; border: 1px solid var(--border-color); color: #ccc; }
+        .btn-outline:hover { background: #444; }
+        .btn-danger { background-color: var(--danger-color); }
+        .btn-danger:hover { background-color: #a00000; }
+        .btn-preview { background-color: var(--preview-color); }
+        .btn-preview:hover { background-color: #218838; }
+        .file-input { display: none; }
+
+        /* 메인 컨테이너 */
+        .main-wrapper { flex: 1; position: relative; overflow: hidden; }
+        .tab-content { display: none; height: 100%; }
+        .tab-content.active { display: flex; }
+
+        /* [오프닝 탭 스타일] */
+        .sidebar { width: 280px; background-color: var(--panel-color); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
+        .sidebar-header { padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .opening-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
+        .opening-item { padding: 12px; border-bottom: 1px solid #444; cursor: pointer; transition: background 0.2s; }
+        .opening-item:hover { background-color: #3a3a3a; }
+        .opening-item.active { background-color: #3a3a3a; border-left: 4px solid var(--accent-color); }
+        .item-title { font-weight: bold; display: block; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem; }
+        .item-preview { font-size: 0.8rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .editor-area { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-weight: bold; color: #a2d2ff; font-size: 0.9rem; }
+        input[type="text"], textarea, select { background-color: var(--input-bg); border: 1px solid var(--border-color); color: white; padding: 8px; border-radius: 4px; font-family: inherit; }
+        textarea { resize: none; height: 350px; line-height: 1.5; font-family: 'Consolas', monospace; }
+        .helper-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
+        .helper-btn { background-color: #444; border: 1px solid #666; color: #ccc; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
+        
+        /* [설정(연출/BGM) 탭 스타일] */
+        .settings-container { width: 100%; padding: 30px; overflow-y: auto; box-sizing: border-box; }
+        .settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .setting-add-row { display: flex; gap: 10px; margin-bottom: 20px; background: #252525; padding: 15px; border-radius: 8px; border: 1px solid #444; align-items: flex-end; }
+        .setting-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .setting-table th, .setting-table td { padding: 12px; border-bottom: 1px solid #444; text-align: left; }
+        .setting-table th { background: #333; color: #a2d2ff; }
+        .setting-table tr:hover { background: #2a2a2a; }
+        .desc-text { color: #888; font-size: 0.9rem; margin-bottom: 15px; }
+
+        /* VN 엔진 프리뷰 (UserScript 스타일) */
+        #vn-engine-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 99990; background: #000; display: none; }
+        #vn-engine-container.visible { display: block; }
+        #vn-background-overlay { width: 100%; height: 100%; background-size: cover; background-position: center; transition: background-image 0.5s ease-in-out; }
+        #vn-event-cg-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background-color: #000; z-index: 1; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+        #vn-event-cg-overlay.visible { opacity: 1; }
+        #vn-character-container { position: absolute; bottom: 0; left: 0; width: 100%; height: 95vh; pointer-events: none; z-index: 2; }
+        .vn-character-slot { position: absolute; bottom: 0; width: 40%; height: 100%; display: flex; justify-content: center; align-items: flex-end; transition: opacity 0.4s, transform 0.4s, left 0.4s ease-in-out, filter 0.4s ease-in-out; transform-origin: bottom center; }
+        .vn-character-slot.speaking { transform: scale(1.05); z-index: 10; filter: brightness(1.0); }
+        .vn-character-slot.listening { transform: scale(0.95); filter: brightness(0.6); z-index: 1; }
+        .vn-character-cg { max-width: 100%; max-height: 100%; object-fit: contain; }
+        #vn-dialogue-box { z-index: 3; position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 1400px; background-color: rgba(0, 0, 0, 0.8); border: 1px solid #555; border-radius: 10px; padding: 30px 60px; color: white; box-sizing: border-box; cursor: pointer; pointer-events: auto; }
+        #vn-character-name { position: absolute; top: 0; left: 40px; transform: translateY(-50%); background-color: rgba(40, 40, 40, 0.9); color: white; font-weight: bold; font-size: 1.2em; padding: 5px 15px; border-radius: 6px; border: 1px solid #777; z-index: 1; display: none; }
+        #vn-dialogue-text { flex-grow: 1; font-size: 1.7em; line-height: 1.6; min-height: 80px; margin: 0; }
+        .action-text { font-style: italic; color: #ccc; }
+        #vn-exit-preview-btn { position: absolute; top: 20px; right: 20px; z-index: 100000; background: #c72c2c; color: white; border: none; padding: 10px 20px; font-size: 1.2rem; cursor: pointer; border-radius: 8px; }
+        
+        /* 애니메이션 키프레임 */
+        @keyframes shake-vertical { 0%, 100% { transform: translateY(0); } 10%, 30%, 50%, 70%, 90% { transform: translateY(-4px); } 20%, 40%, 60%, 80% { transform: translateY(4px); } } .vn-anim-shake-vertical { animation: shake-vertical 0.7s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake-horizontal { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); } 20%, 40%, 60%, 80% { transform: translateX(4px); } } .vn-anim-shake-horizontal { animation: shake-horizontal 0.7s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes flash { from, 50%, to { opacity: 1; } 25%, 75% { opacity: 0.6; } } .vn-anim-flash { animation: flash 0.8s; }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-20px); } 60% { transform: translateY(-10px); } } .vn-anim-bounce { animation: bounce 1s; }
+        @keyframes fall-left { 0% { transform: rotate(0deg); } 30% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } 100% { transform: rotate(-90deg) translateY(10px); } } .vn-anim-fall-left { transform-origin: bottom center; animation: fall-left 2s ease-in forwards; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1><span class="logo-icon">🎬</span> VN 통합 에디터</h1>
+    <div style="display: flex; gap: 10px;">
+        <input type="file" id="fileInput" class="file-input" accept=".json">
+        <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">📂 불러오기</button>
+        <button class="btn btn-preview" onclick="startPreview()">▶ 미리보기</button>
+        <button class="btn" onclick="saveFile()">💾 저장하기</button>
+    </div>
+</header>
+
+<div class="nav-tabs">
+    <div class="nav-tab active" onclick="switchTab('opening')">🎬 오프닝 시나리오</div>
+    <div class="nav-tab" onclick="switchTab('anim')">✨ 연출 / 애니메이션</div>
+    <div class="nav-tab" onclick="switchTab('bgm')">🎵 배경음악 (BGM)</div>
+</div>
+
+<div class="main-wrapper">
+    <!-- 탭 1: 오프닝 에디터 -->
+    <div id="tab-opening" class="tab-content active">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span>시나리오 목록</span>
+                <button class="btn" style="padding: 4px 8px; font-size: 0.8rem;" onclick="addOpening()">+</button>
+            </div>
+            <ul class="opening-list" id="openingList"></ul>
+        </div>
+        <div class="editor-area" id="editorArea">
+            <div style="flex:1; display:flex; justify-content:center; align-items:center; color:#666;">
+                👈 파일을 불러오거나 새 오프닝을 추가하세요.
+            </div>
+        </div>
+    </div>
+
+    <!-- 탭 2: 애니메이션 에디터 -->
+    <div id="tab-anim" class="tab-content">
+        <div class="settings-container">
+            <div class="settings-header">
+                <h2 style="margin:0;">✨ 연출 (Animation) 설정</h2>
+            </div>
+            <p class="desc-text">캐릭터 이미지 파일명에 특정 '키워드'가 포함되면 등장 시 효과를 재생합니다.</p>
+            
+            <div class="setting-add-row">
+                <div class="form-group" style="flex:1;">
+                    <label>키워드 (Trigger)</label>
+                    <input type="text" id="animTrigger" placeholder="예: angry, happy">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label>효과 종류</label>
+                    <select id="animType">
+                        <option value="shake-vertical">세로 흔들기 (놀람/쿵)</option>
+                        <option value="shake-horizontal">가로 흔들기 (부정/충격)</option>
+                        <option value="bounce">통통 튀기 (기쁨)</option>
+                        <option value="flash">반짝이기 (주목/효과음)</option>
+                        <option value="fall-left">왼쪽으로 털썩 (쓰러짐)</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="addAnimRule()">+ 규칙 추가</button>
+            </div>
+
+            <table class="setting-table">
+                <thead><tr><th>키워드</th><th>효과</th><th>작업</th></tr></thead>
+                <tbody id="animTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 탭 3: BGM 에디터 -->
+    <div id="tab-bgm" class="tab-content">
+        <div class="settings-container">
+            <div class="settings-header">
+                <h2 style="margin:0;">🎵 배경음악 (BGM) 설정</h2>
+            </div>
+            <p class="desc-text">배경 이미지 파일명에 특정 '키워드'가 포함되면 해당 음악을 재생합니다.</p>
+            
+            <div class="setting-add-row">
+                <div class="form-group" style="flex:1;">
+                    <label>키워드 (Trigger)</label>
+                    <input type="text" id="bgmTrigger" placeholder="예: rain, cafe, night">
+                </div>
+                <div class="form-group" style="flex:2;">
+                    <label>음악 URL (.mp3 등)</label>
+                    <input type="text" id="bgmUrl" placeholder="https://...">
+                </div>
+                <button class="btn" onclick="addBgmRule()">+ 규칙 추가</button>
+            </div>
+
+            <table class="setting-table">
+                <thead><tr><th>키워드</th><th>음악 URL</th><th>작업</th></tr></thead>
+                <tbody id="bgmTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 프리뷰 컨테이너 -->
+<div id="vn-engine-container">
+    <button id="vn-exit-preview-btn" onclick="stopPreview()">✖ 미리보기 종료</button>
+    <div id="vn-background-overlay"></div>
+    <img id="vn-event-cg-overlay" />
+    <div id="vn-character-container"></div>
+    <div id="vn-dialogue-box">
+        <div id="vn-character-name"></div>
+        <p id="vn-dialogue-text"></p>
+    </div>
+</div>
+
+<script>
+    // --- [1. 데이터 및 기본 로직] ---
+    let currentData = { meta: { storyId: "", version: "2.5", coverUrl: "" }, settings: { animations: [], bgm: [] }, opening: [] };
+    let selectedIndex = -1;
+
+    // --- [2. 탭 전환] ---
+    function switchTab(tabId) {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        document.querySelector(`.nav-tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+
+        // 탭 전환 시 데이터 리프레시 (혹시 모를 동기화)
+        if(tabId === 'anim') renderAnimList();
+        if(tabId === 'bgm') renderBgmList();
+    }
+
+    // --- [3. 파일 로드] ---
+    const fileInput = document.getElementById('fileInput');
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try { loadData(JSON.parse(event.target.result)); } catch (err) { alert("JSON 오류: " + err.message); }
+        };
+        reader.readAsText(file);
+        fileInput.value = '';
+    });
+
+    function loadData(json) {
+        currentData.meta = json.meta || { storyId: "unknown", version: "2.5", coverUrl: "" };
+        currentData.settings = json.settings || { animations: [], bgm: [] };
+        // 오프닝 파싱
+        if (Array.isArray(json.opening)) currentData.opening = json.opening;
+        else if (typeof json.opening === 'string' && json.opening.trim() !== "") currentData.opening = [{ title: "기본 오프닝", content: json.opening }];
+        else currentData.opening = [];
+        
+        // UI 갱신
+        renderOpeningList();
+        renderAnimList();
+        renderBgmList();
+
+        if (currentData.opening.length > 0) selectOpening(0);
+        else document.getElementById('editorArea').innerHTML = `<div style="flex:1;display:flex;justify-content:center;align-items:center;color:#666;">데이터가 없습니다.</div>`;
+    }
+
+    // --- [4. 오프닝 에디터 로직] ---
+    const openingList = document.getElementById('openingList');
+    const editorArea = document.getElementById('editorArea');
+
+    function renderOpeningList() {
+        openingList.innerHTML = '';
+        currentData.opening.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = `opening-item ${index === selectedIndex ? 'active' : ''}`;
+            li.onclick = () => selectOpening(index);
+            const title = item.title || `(제목 없음 ${index + 1})`;
+            const preview = item.content ? item.content.substring(0, 30).replace(/\n/g, ' ') + '...' : '(내용 없음)';
+            li.innerHTML = `<span class="item-title">${title}</span><span class="item-preview">${preview}</span>`;
+            openingList.appendChild(li);
+        });
+    }
+
+    function selectOpening(index) {
+        if (index < 0 || index >= currentData.opening.length) return;
+        saveCurrentOpeningEdit(); 
+        selectedIndex = index;
+        const item = currentData.opening[index];
+
+        editorArea.innerHTML = `
+            <div class="meta-panel">
+                <div class="form-group"><label>작품 ID</label><input type="text" id="metaStoryId" value="${currentData.meta.storyId || ''}" onchange="updateMeta()"></div>
+                <div class="form-group"><label>커버 이미지 URL</label><input type="text" id="metaCoverUrl" value="${currentData.meta.coverUrl || ''}" onchange="updateMeta()"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2 style="margin:0;">오프닝 편집 (${index + 1})</h2>
+                <button class="btn btn-danger" onclick="deleteOpening(${index})">🗑 삭제</button>
+            </div>
+            <div class="form-group"><label>제목</label><input type="text" id="editTitle" value="${item.title || ''}" placeholder="예: 학교 복도에서"></div>
+            <div class="form-group">
+                <label>시나리오 (마크다운)</label>
+                <div class="helper-bar">
+                    <button class="helper-btn" onclick="insertText('![]()')">🖼 이미지</button>
+                    <button class="helper-btn" onclick="insertText('**이름** | 대사')">💬 대사</button>
+                    <button class="helper-btn" onclick="insertText('*지문*')">🎬 지문</button>
+                    <button class="helper-btn" onclick="insertText('![](off)')">❌ 캐릭OFF</button>
+                </div>
+                <textarea id="editContent" placeholder="내용 입력...">${item.content || ''}</textarea>
+            </div>
+        `;
+        renderOpeningList();
+        document.getElementById('editTitle').addEventListener('input', saveCurrentOpeningEdit);
+        document.getElementById('editContent').addEventListener('input', saveCurrentOpeningEdit);
+    }
+
+    function addOpening() { currentData.opening.push({ title: `새 오프닝 ${currentData.opening.length + 1}`, content: "" }); selectOpening(currentData.opening.length - 1); }
+    function deleteOpening(index) {
+        if (!confirm("삭제하시겠습니까?")) return;
+        selectedIndex = -1; // 중요: 저장 방지
+        currentData.opening.splice(index, 1);
+        renderOpeningList();
+        if (currentData.opening.length > 0) selectOpening(Math.min(index, currentData.opening.length - 1));
+        else editorArea.innerHTML = `<div style="flex:1;display:flex;justify-content:center;align-items:center;color:#666;">데이터가 없습니다.</div>`;
+    }
+    function saveCurrentOpeningEdit() {
+        if (selectedIndex === -1) return;
+        const t = document.getElementById('editTitle'); const c = document.getElementById('editContent');
+        if (t && c) {
+            currentData.opening[selectedIndex].title = t.value;
+            currentData.opening[selectedIndex].content = c.value;
+            const li = openingList.querySelectorAll('.opening-item')[selectedIndex];
+            if(li) li.querySelector('.item-title').textContent = t.value || `(제목 없음)`;
+        }
+    }
+    function updateMeta() { const i = document.getElementById('metaStoryId'); const c = document.getElementById('metaCoverUrl'); if (i) currentData.meta.storyId = i.value; if (c) currentData.meta.coverUrl = c.value; }
+    function insertText(t) { const ta = document.getElementById('editContent'); if (!ta) return; const s = ta.selectionStart; const e = ta.selectionEnd; ta.value = ta.value.substring(0, s) + t + ta.value.substring(e); ta.selectionStart = ta.selectionEnd = s + t.length; ta.focus(); saveCurrentOpeningEdit(); }
+
+    // --- [5. 애니메이션 에디터 로직] ---
+    const ANIM_NAMES = { 'shake-vertical': '세로 흔들기', 'shake-horizontal': '가로 흔들기', 'flash': '반짝이기', 'bounce': '통통 튀기', 'fall-left': '넘어짐' };
+    
+    function renderAnimList() {
+        const tbody = document.getElementById('animTableBody');
+        tbody.innerHTML = '';
+        currentData.settings.animations.forEach((rule, idx) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="color:#a2d2ff; font-weight:bold;">${rule.trigger}</td>
+                <td>${ANIM_NAMES[rule.animation] || rule.animation}</td>
+                <td><button class="btn btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="deleteAnim(${idx})">삭제</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        if(currentData.settings.animations.length === 0) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#666;">등록된 규칙이 없습니다.</td></tr>';
+    }
+    function addAnimRule() {
+        const trigger = document.getElementById('animTrigger').value.trim();
+        const type = document.getElementById('animType').value;
+        if(!trigger) { alert("키워드를 입력하세요."); return; }
+        currentData.settings.animations.push({ id: Date.now(), trigger: trigger, animation: type });
+        document.getElementById('animTrigger').value = '';
+        renderAnimList();
+    }
+    function deleteAnim(idx) { currentData.settings.animations.splice(idx, 1); renderAnimList(); }
+
+    // --- [6. BGM 에디터 로직] ---
+    function renderBgmList() {
+        const tbody = document.getElementById('bgmTableBody');
+        tbody.innerHTML = '';
+        currentData.settings.bgm.forEach((rule, idx) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="color:#ff9e9e; font-weight:bold;">${rule.trigger}</td>
+                <td title="${rule.audioUrl}" style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${rule.audioUrl}</td>
+                <td><button class="btn btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="deleteBgm(${idx})">삭제</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        if(currentData.settings.bgm.length === 0) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#666;">등록된 규칙이 없습니다.</td></tr>';
+    }
+    function addBgmRule() {
+        const trigger = document.getElementById('bgmTrigger').value.trim();
+        const url = document.getElementById('bgmUrl').value.trim();
+        if(!trigger || !url) { alert("키워드와 URL을 모두 입력하세요."); return; }
+        currentData.settings.bgm.push({ id: Date.now(), trigger: trigger, audioUrl: url });
+        document.getElementById('bgmTrigger').value = '';
+        document.getElementById('bgmUrl').value = '';
+        renderBgmList();
+    }
+    function deleteBgm(idx) { currentData.settings.bgm.splice(idx, 1); renderBgmList(); }
+
+    // --- [7. 파일 저장] ---
+    function saveFile() {
+        const d = JSON.stringify(currentData, null, 2);
+        const b = new Blob([d], { type: "application/json" });
+        const u = URL.createObjectURL(b);
+        const a = document.createElement('a');
+        a.href = u;
+        a.download = `vn_preset_${(currentData.meta.storyId||"preset").replace(/[^a-zA-Z0-9-_]/g, '')}.json`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+    }
+
+    // --- [8. VN 엔진 미리보기 로직] ---
+    const UIManager = {
+        elements: {}, activeCharacters: [], characterMap: {}, lastUpdatedCharId: null,
+        init() {
+            this.elements = {
+                container: document.getElementById('vn-engine-container'),
+                background: document.getElementById('vn-background-overlay'),
+                eventCG: document.getElementById('vn-event-cg-overlay'),
+                charContainer: document.getElementById('vn-character-container'),
+                dialogueBox: document.getElementById('vn-dialogue-box'),
+                charName: document.getElementById('vn-character-name'),
+                dialogueText: document.getElementById('vn-dialogue-text')
+            };
+            this.elements.dialogueBox.onclick = () => StageManager.next();
+        },
+        reset() {
+            this.activeCharacters.forEach(c => c.element && c.element.remove());
+            this.activeCharacters = []; this.characterMap = {}; this.lastUpdatedCharId = null;
+            if(this.elements.background) this.elements.background.style.backgroundImage = '';
+            if(this.elements.eventCG) { this.elements.eventCG.classList.remove('visible'); this.elements.eventCG.src = ''; }
+            if(this.elements.charName) this.elements.charName.style.display = 'none';
+            if(this.elements.dialogueText) this.elements.dialogueText.innerHTML = '';
+        },
+        async updateCharacter(url, characterId = null) {
+            if (url === 'off') {
+                const idx = this.activeCharacters.findIndex(char => char.id === characterId);
+                if (idx > -1) {
+                    const c = this.activeCharacters[idx];
+                    if (c.element) { c.element.style.opacity = 0; setTimeout(() => c.element.remove(), 400); }
+                    if (this.elements.eventCG.dataset.ownerId === characterId) this.elements.eventCG.classList.remove('visible');
+                    this.activeCharacters.splice(idx, 1); this._updateCharacterOrder();
+                }
+                return;
+            }
+            const filename = url.substring(url.lastIndexOf('/') + 1).split('.')[0];
+            const charInfo = { id: filename };
+            this.lastUpdatedCharId = charInfo.id;
+            const ratio = await new Promise(r => { const i = new Image(); i.onload = () => r(i.width/i.height); i.onerror = () => r(1); i.src = url; });
+            const mode = ratio > 1.2 ? 'event' : 'standing';
+            const exist = this.activeCharacters.find(c => c.id === charInfo.id);
+
+            if (exist) {
+                exist.url = url; exist.mode = mode;
+                if (mode === 'event') {
+                    this.elements.eventCG.dataset.ownerId = charInfo.id; this.elements.eventCG.src = url; this.elements.eventCG.classList.add('visible');
+                    if (exist.element) exist.element.style.display = 'none';
+                } else {
+                    if (this.elements.eventCG.dataset.ownerId === charInfo.id) this.elements.eventCG.classList.remove('visible');
+                    if (!exist.element) exist.element = this._createCharEl(url);
+                    exist.element.style.display = 'flex';
+                    const img = exist.element.querySelector('img'); if(img.src!==url) { img.src=url; this.applyAnim(img, url); }
+                }
+            } else {
+                const newChar = { id: charInfo.id, url, mode, element: null };
+                if (mode === 'standing') { newChar.element = this._createCharEl(url, true); this.applyAnim(newChar.element.querySelector('img'), url); }
+                else { this.elements.eventCG.dataset.ownerId = charInfo.id; this.elements.eventCG.src = url; this.elements.eventCG.classList.add('visible'); }
+                this.activeCharacters.push(newChar); this._updateCharacterOrder();
+            }
+        },
+        _createCharEl(url, append=false) {
+            const d = document.createElement('div'); d.className = 'vn-character-slot'; d.style.opacity=0; d.style.transform='translateY(20px)';
+            const i = document.createElement('img'); i.className = 'vn-character-cg'; i.src = url; d.appendChild(i);
+            if(append) { this.elements.charContainer.appendChild(d); setTimeout(() => { d.style.opacity=1; d.style.transform='translateY(0)'; }, 50); }
+            return d;
+        },
+        _updateCharacterOrder() {
+            const chars = this.activeCharacters.filter(c => c.mode === 'standing' && c.element);
+            const cnt = chars.length; if(cnt===0) return;
+            let ov = 10; if(cnt>3) ov = 10 + (8 * (cnt - 3));
+            const w = 40; const s = w - ov; const tot = (s*(cnt-1))+w; const st = (100-tot)/2;
+            chars.forEach((c, i) => { if(!c.element.parentElement) this.elements.charContainer.appendChild(c.element); c.element.style.left = `${st+(i*s)}%`; c.element.style.zIndex = i+2; });
+        },
+        applyAnim(img, url) {
+            const fname = url.substring(url.lastIndexOf('/') + 1);
+            const rule = currentData.settings.animations.find(r => fname.includes(r.trigger));
+            img.className = 'vn-character-cg'; 
+            if (rule) {
+                img.classList.add(`vn-anim-${rule.animation}`);
+                if (rule.animation !== 'fall-left') img.addEventListener('animationend', () => img.classList.remove(`vn-anim-${rule.animation}`), {once:true});
+            }
+        },
+        highlightSpeaker(name) {
+            if(!name) { this.activeCharacters.forEach(c => { if(c.element) { c.element.classList.remove('speaking'); c.element.classList.add('listening'); } }); return; }
+            const t = name.trim(); let id = this.characterMap[t];
+            if(!id && this.lastUpdatedCharId) { this.characterMap[t] = this.lastUpdatedCharId; id = this.lastUpdatedCharId; }
+            this.activeCharacters.forEach(c => {
+                if(!c.element) return;
+                let m = (c.id === id);
+                if(!id) { const cid=c.id.toLowerCase(); const nl=t.toLowerCase().replace(/\s+/g,''); if(cid.includes(nl)||nl.includes(cid)) { m=true; this.characterMap[t]=c.id; } }
+                if(m) { c.element.classList.add('speaking'); c.element.classList.remove('listening'); c.element.style.zIndex=100; }
+                else { c.element.classList.add('listening'); c.element.classList.remove('speaking'); c.element.style.zIndex=1; }
+            });
+        },
+        updateDialogue(c, t, a, cb) {
+            const {charName, dialogueText} = this.elements;
+            if(c) { charName.textContent=c; charName.style.display='inline-block'; } else charName.style.display='none';
+            dialogueText.className = a ? 'action-text' : ''; cb(dialogueText, t);
+        }
+    };
+
+    const StageManager = {
+        cueSheet: [], idx: -1, isTyping: false, timer: null, currentAudio: null,
+        start(text) {
+            this.cueSheet = this.parse(text); if (this.cueSheet.length === 0) return;
+            UIManager.reset(); UIManager.elements.container.classList.add('visible');
+            const bg = this.cueSheet.find(c => c.type === 'bg');
+            if(bg) { UIManager.elements.background.style.backgroundImage = `url("${bg.url}")`; this.playBgm(bg.url); }
+            this.idx = -1; this.next();
+        },
+        stop() {
+            UIManager.elements.container.classList.remove('visible'); clearInterval(this.timer);
+            if(this.currentAudio) { this.currentAudio.pause(); this.currentAudio = null; }
+        },
+        next() {
+            if (this.isTyping) { this.skip(); return; }
+            this.idx++; if (this.idx >= this.cueSheet.length) return;
+            this.process(this.cueSheet[this.idx]);
+        },
+        process(cue) {
+            switch(cue.type) {
+                case 'char': UIManager.updateCharacter(cue.url, cue.id).then(() => this.next()); break;
+                case 'bg': UIManager.elements.background.style.backgroundImage = `url("${cue.url}")`; this.playBgm(cue.url); this.next(); break;
+                case 'dialogue': UIManager.highlightSpeaker(cue.char); UIManager.updateDialogue(cue.char, cue.content, false, (el, t) => this.type(el, t)); break;
+                case 'action': UIManager.highlightSpeaker(null); UIManager.updateDialogue(null, cue.content, true, (el, t) => this.type(el, t)); break;
+            }
+        },
+        type(el, text) {
+            el.innerHTML = ''; this.isTyping = true; let i = 0;
+            this.timer = setInterval(() => {
+                if (i < text.length) {
+                    if (text.charAt(i) === '<') { const c = text.indexOf('>', i); if (c !== -1) { el.innerHTML += text.substring(i, c+1); i = c+1; return; } }
+                    el.innerHTML += text.charAt(i); i++;
+                } else this.skip();
+            }, 40);
+        },
+        skip() {
+            clearInterval(this.timer); this.isTyping = false;
+            const cue = this.cueSheet[this.idx];
+            if (cue && (cue.type === 'dialogue' || cue.type === 'action')) UIManager.elements.dialogueText.innerHTML = cue.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+        },
+        parse(text) {
+            const lines = text.split('\n'); const cues = [];
+            lines.forEach(l => {
+                l = l.trim(); if (!l) return;
+                let m = l.match(/^!\[([a-zA-Z0-9_]+)\]\((off)\)$/); if (m) { cues.push({type:'char', url:'off', id:m[1]}); return; }
+                m = l.match(/^!\[.*?\]\((.*?)\)$/); if (m) { const u=m[1]; if(u.includes('/g/')) cues.push({type:'bg', url:u}); else cues.push({type:'char', url:u}); return; }
+                m = l.match(/^"?\*\*(.*?)\*\*\s*[|｜]\s*(.*?)"?$/); if (m) { cues.push({type:'dialogue', char:m[1].trim(), content:m[2].trim()}); return; }
+                m = l.match(/^\*(.*)\*$/); if (m) { cues.push({type:'action', content:m[1].trim()}); return; }
+                cues.push({type:'action', content:l});
+            });
+            return cues;
+        },
+        playBgm(url) {
+            if(!url) return;
+            const fname = url.substring(url.lastIndexOf('/') + 1);
+            const rule = currentData.settings.bgm.find(r => fname.includes(r.trigger));
+            if(this.currentAudio && this.currentAudio.src === (rule ? rule.audioUrl : '')) return;
+            if(this.currentAudio) { this.currentAudio.pause(); this.currentAudio = null; }
+            if (rule && rule.audioUrl) {
+                const a = new Audio(rule.audioUrl); a.volume = 0.5; a.loop = true;
+                this.currentAudio = a; a.play().catch(e => console.log('BGM Play blocked', e));
+            }
+        }
+    };
+
+    UIManager.init();
+    function startPreview() {
+        if (selectedIndex === -1) { alert("미리보기할 오프닝을 선택해주세요."); return; }
+        saveCurrentOpeningEdit();
+        StageManager.start(document.getElementById('editContent').value);
+    }
+    function stopPreview() { StageManager.stop(); }
+
+</script>
+</body>
+</html>
