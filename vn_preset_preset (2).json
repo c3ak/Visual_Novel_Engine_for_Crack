@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "storyId": "",
+    "version": "2.5",
+    "coverUrl": ""
+  },
+  "settings": {
+    "animations": [
+      {
+        "id": 1766753463296,
+        "trigger": "1",
+        "animation": "shake-vertical"
+      }
+    ],
+    "bgm": [
+      {
+        "id": 1766753321587,
+        "trigger": "32",
+        "audioUrl": "https://github.com/c3ak/A/raw/refs/heads/main/just-relax-11157.mp3"
+      }
+    ]
+  },
+  "opening": [
+    {
+      "title": "새 오프닝 1",
+      "content": "![](https://raw.githubusercontent.com/c3ak/A/refs/heads/g/32.png)\n*예제*\n\n![](https://raw.githubusercontent.com/c3ak/A/refs/heads/main/eri.png)\n\"**에리** | 테스트\"\n\n![](https://raw.githubusercontent.com/c3ak/A/refs/heads/main/s1.png)\n\"**여성** | 테스트\"\n\n"
+    }
+  ]
+}
