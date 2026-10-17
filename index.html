@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="크랙(crack.wrtn.ai)을 비주얼 노벨로 확장하는 VN 엔진의 설치와 플레이 방법">
+<style>
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; -webkit-text-size-adjust: 100%; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<title>VN 엔진 플레이 안내</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Nanum+Gothic+Coding&display=swap">
+<style>
+/* 레이아웃: 위에는 실제 VN 화면을 흉내 낸 무대, 아래는 게임 설명서처럼 왼쪽 목차 + 오른쪽 본문 */
+:root {
+    --bg: #eceef4;          /* 차가운 회보라 종이 */
+    --surface: #f8f9fc;
+    --ink: #1c2132;
+    --muted: #5d6479;
+    --line: #d3d7e3;
+    --accent: #b23a62;      /* 이름표의 산딸기색 */
+    --accent-soft: #f3dce4;
+    --code-bg: #e2e5ee;
+    --stage-ink: #f3f1ff;
+    --font-display: "Gowun Batang", "Noto Serif KR", "Batang", serif;
+    --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --font-mono: "Nanum Gothic Coding", "D2Coding", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #12141d; --surface: #1a1d29; --ink: #e8e9f3; --muted: #9ba1b8; --line: #2c3142;
+        --accent: #f07c9f; --accent-soft: #3a2230; --code-bg: #222636; color-scheme: dark;
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #12141d; --surface: #1a1d29; --ink: #e8e9f3; --muted: #9ba1b8; --line: #2c3142;
+    --accent: #f07c9f; --accent-soft: #3a2230; --code-bg: #222636; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.75; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.3; }
+p { margin: 0; }
+a { color: var(--accent); }
+code, kbd { font-family: var(--font-mono); font-size: .9em; background: var(--code-bg); border-radius: 4px; padding: 1px 5px; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── 머리 ─────────────────────────────── */
+.hero { padding-block: 48px 40px; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 40px; align-items: center; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; }
+.hero h1 { font-size: clamp(30px, 4.4vw, 46px); margin-top: 10px; }
+.hero .lead { margin-top: 16px; color: var(--muted); max-width: 34em; font-size: 16px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 600 14px var(--font-body); text-decoration: none; cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn[aria-disabled="true"] { opacity: .55; cursor: default; }
+.btn small { font-weight: 500; font-size: 11px; opacity: .8; }
+.version { margin-top: 18px; font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+
+/* ── 흉내 낸 VN 화면 ─────────────────────── */
+.stage { position: relative; aspect-ratio: 16 / 10; max-width: 100%; border-radius: 14px; overflow: hidden; color: var(--stage-ink); cursor: pointer; user-select: none;
+    background:
+        radial-gradient(120% 70% at 70% 0%, #41507e 0%, transparent 60%),
+        linear-gradient(180deg, #232b4a 0%, #161a2e 55%, #0d0f1b 100%);
+    box-shadow: 0 18px 50px -20px rgba(16, 20, 40, .55); }
+.stage::before { content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(100deg, transparent 0 14px, rgba(190, 205, 255, .07) 14px 15px); }   /* 빗줄기 */
+.stage::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: linear-gradient(180deg, transparent, rgba(8, 9, 18, .75)); }
+.platform { position: absolute; left: 0; right: 0; bottom: 22%; height: 2px; background: rgba(210, 220, 255, .25); }
+.figure { position: absolute; left: 58%; bottom: 0; width: 22%; height: 72%; transition: opacity .4s ease; }
+.figure i { position: absolute; left: 50%; transform: translateX(-50%); background: linear-gradient(180deg, #303a62, #1b2140); }
+.figure .head { top: 0; width: 38%; aspect-ratio: 1; border-radius: 50%; }
+.figure .body { top: 20%; width: 78%; height: 80%; border-radius: 42% 42% 0 0; }
+.figure.away { opacity: 0; }
+.status-bar { position: absolute; top: 3.5%; left: 3%; display: flex; flex-wrap: wrap; gap: 0; font-size: clamp(9px, 1.25vw, 12px); background: rgba(10, 12, 26, .72); border: 1px solid rgba(255, 255, 255, .14); border-radius: 6px; z-index: 2; }
+.status-bar span { padding: 3px 8px; border-right: 1px solid rgba(255, 255, 255, .12); }
+.status-bar span:last-child { border-right: 0; }
+.menu-btn { position: absolute; top: 3.5%; right: 3%; font-size: clamp(9px, 1.25vw, 12px); padding: 3px 10px; border-radius: 6px; background: rgba(10, 12, 26, .72); border: 1px solid rgba(255, 255, 255, .2); z-index: 2; }
+.dialogue { position: absolute; left: 3%; right: 3%; bottom: 4%; min-height: 26%; padding: 4.2% 5% 3.2%; border-radius: 10px; background: rgba(10, 12, 26, .82); border: 1px solid rgba(255, 255, 255, .16); z-index: 2; }
+.name-tag { position: absolute; top: 0; left: 4%; transform: translateY(-62%); padding: 2px 12px; border-radius: 6px; background: #b23a62; color: #fff; font-size: clamp(10px, 1.5vw, 14px); font-weight: 600; }
+.name-tag[hidden] { display: none; }
+.line { font-family: var(--font-display); font-size: clamp(12px, 2vw, 19px); line-height: 1.6; min-height: 1.6em; }
+.line.narration { color: #cfd2e6; font-style: italic; }
+.back { position: absolute; left: 1.4%; top: 50%; transform: translateY(-50%); font-size: clamp(12px, 2vw, 18px); opacity: .6; }
+.stage-buttons { position: absolute; right: 3%; bottom: calc(4% + 26% + 10px); display: flex; gap: 6px; z-index: 2; }
+.stage-buttons span { font-size: clamp(9px, 1.15vw, 11px); padding: 2px 9px; border-radius: 5px; background: rgba(10, 12, 26, .72); border: 1px solid rgba(255, 255, 255, .2); }
+.stage-buttons .send { background: #b23a62; border-color: #b23a62; }
+.stage-buttons .send.pulse { box-shadow: 0 0 0 3px rgba(240, 124, 159, .45); }
+.next-hint { position: absolute; right: 4%; bottom: 7%; font-size: clamp(9px, 1.15vw, 11px); opacity: .7; z-index: 3; }
+.stage-caption { margin-top: 10px; font-size: 13px; color: var(--muted); }
+
+/* ── 본문: 목차 + 내용 ───────────────────── */
+.manual { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; padding-block: 24px 72px; border-top: 1px solid var(--line); }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; display: flex; flex-direction: column; gap: 2px; padding-top: 28px; }
+.toc a { color: var(--muted); text-decoration: none; font-size: 14px; padding: 5px 10px; border-left: 2px solid transparent; }
+.toc a:hover { color: var(--ink); border-left-color: var(--line); }
+.toc a.on { color: var(--accent); border-left-color: var(--accent); }
+.sections { display: flex; flex-direction: column; gap: 56px; padding-top: 28px; min-width: 0; }
+section h2 { font-size: 27px; }
+section > .intro { margin-top: 10px; color: var(--muted); max-width: 40em; }
+.block { margin-top: 22px; }
+
+.note { margin-top: 14px; padding: 12px 16px; border-radius: 8px; background: var(--accent-soft); font-size: 14px; max-width: 46em; }
+
+/* 설치 단계 (실제 순서) */
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; counter-reset: s; }
+.steps li { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; padding-bottom: 22px; counter-increment: s; }
+.steps li::before { content: counter(s); width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); font-family: var(--font-display); font-weight: 700; display: grid; place-items: center; background: var(--bg); position: relative; z-index: 1; }
+.steps li:not(:last-child)::after { content: ""; position: absolute; left: 17px; top: 34px; bottom: 0; width: 1.5px; background: var(--line); }
+.steps h3 { font-size: 18px; margin-top: 4px; }
+.steps p { margin-top: 4px; color: var(--muted); max-width: 40em; }
+.platforms { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+
+/* 조작 표 */
+.controls { width: 100%; border-collapse: collapse; font-size: 14px; }
+.controls th, .controls td { text-align: left; vertical-align: top; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+.controls th { width: 34%; font-weight: 600; }
+.controls td { color: var(--muted); }
+.table-box { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.controls tr:last-child th, .controls tr:last-child td { border-bottom: 0; }
+
+/* 메뉴 그림 */
+.panel-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.panel { padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
+.panel h3 { font-size: 17px; }
+.panel p { margin-top: 6px; color: var(--muted); font-size: 14px; }
+
+.faq { display: flex; flex-direction: column; gap: 10px; }
+.faq details { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 0 16px; }
+.faq summary { cursor: pointer; padding: 14px 0; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+.faq summary::after { content: "+"; color: var(--accent); font-weight: 400; }
+.faq details[open] summary::after { content: "−"; }
+.faq details p, .faq details ul { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+.faq ul { padding-left: 18px; }
+
+.maker { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px; border-radius: 12px; border: 1px dashed var(--accent); background: var(--surface); }
+.maker h3 { font-size: 20px; }
+.maker p { color: var(--muted); font-size: 14px; margin-top: 4px; max-width: 36em; }
+
+footer { border-top: 1px solid var(--line); padding-block: 20px 32px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 860px) {
+    .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+    .manual { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .toc { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; padding-top: 18px; }
+    .toc a { border-left: 0; border-bottom: 2px solid transparent; padding: 4px 8px; }
+    .toc a.on { border-bottom-color: var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .figure { transition: none; }
+}
+</style>
+</head>
+<body>
+<header class="hero">
+    <div class="wrap hero-grid">
+        <div>
+            <div class="eyebrow">Visual Novel Engine for Crack</div>
+            <h1>크랙을<br>비주얼 노벨로 확장한다</h1>
+            <p class="lead">AI 가 보낸 응답을 배경, 인물, 이름표가 달린 대사창으로 바꿔 한 줄씩 보여 주는 브라우저 확장 스크립트입니다. 크랙에서 하던 대화는 그대로이고, 보는 화면만 바뀝니다.</p>
+            <div class="hero-actions">
+                <a class="btn primary" href="#install">설치하기</a>
+                <a class="btn" id="maker-link-top" href="#maker" aria-disabled="true">제작자 안내 <small>준비 중</small></a>
+            </div>
+            <p class="version">엔진 3.37.2 · 크랙(crack.wrtn.ai) 전용</p>
+        </div>
+        <div>
+            <div class="stage" id="demo" role="button" tabindex="0" aria-label="VN 화면 예시. 누르면 다음 대사로 넘어갑니다">
+                <div class="platform"></div>
+                <div class="figure away" id="demo-figure"><i class="head"></i><i class="body"></i></div>
+                <div class="status-bar" aria-label="정보 바">
+                    <span>3412년 05월 11일</span><span>금요일</span><span>21:40</span><span>밤</span><span>🌧️</span><span>아우로라 - 정거장 로비</span>
+                </div>
+                <div class="menu-btn">☰ 메뉴</div>
+                <div class="stage-buttons"><span>로그</span><span class="send" id="demo-send">대화 입력</span></div>
+                <div class="dialogue">
+                    <div class="name-tag" id="demo-name" hidden></div>
+                    <span class="back" aria-hidden="true">‹</span>
+                    <p class="line narration" id="demo-line">비 내리는 정거장. 마지막 셔틀이 막 떠났다.</p>
+                </div>
+                <div class="next-hint" id="demo-hint">눌러서 다음 ▸</div>
+            </div>
+            <p class="stage-caption">예시 화면입니다. 실제 VN 화면처럼 대사창을 누르면 다음 줄로 넘어갑니다.</p>
+        </div>
+    </div>
+</header>
+
+<main class="wrap manual">
+    <nav class="toc" aria-label="목차">
+        <a href="#install">설치</a>
+        <a href="#play">플레이 방법</a>
+        <a href="#menu">메뉴와 화면</a>
+        <a href="#cartridge">카트리지</a>
+        <a href="#settings">설정</a>
+        <a href="#mobile">폰에서</a>
+        <a href="#faq">문제가 생기면</a>
+    </nav>
+
+    <div class="sections">
+        <section id="install">
+            <h2>설치</h2>
+            <p class="intro">사용자 스크립트 관리자에 엔진 스크립트를 한 번 넣어 두면, 크랙을 열 때마다 자동으로 켜집니다.</p>
+            <ol class="block steps">
+                <li><div>
+                    <h3>스크립트 관리자 설치</h3>
+                    <p>PC 에서는 크롬이나 엣지에 Tampermonkey 확장을 설치합니다. 아이폰에서는 사파리 확장 앱 Stay 를 씁니다.</p>
+                    <div class="platforms"><span class="chip">PC 크롬 · 엣지 + Tampermonkey</span><span class="chip">아이폰 사파리 + Stay</span></div>
+                </div></li>
+                <li><div>
+                    <h3>엔진 스크립트 넣기</h3>
+                    <p>스크립트 관리자에서 새 스크립트를 만들고 <code>VN_Engine.user.js</code> 내용을 붙여 넣은 뒤 저장합니다. 이미 넣어 둔 예전 엔진이 있으면 내용을 통째로 바꿉니다.</p>
+                    <div class="hero-actions"><a class="btn" id="install-link" href="#install" aria-disabled="true">엔진 스크립트 받기 <small>준비 중</small></a></div>
+                </div></li>
+                <li><div>
+                    <h3>크랙 새로고침</h3>
+                    <p>크랙 채팅방을 새로 고치면 왼쪽 아래에 <code>VN 시작</code> · <code>UI 테스트</code> · <code>설정</code> 제어판이 생깁니다. 처음 메시지를 가져올 때 Tampermonkey 가 크랙 서버(<code>crack-api.wrtn.ai</code>) 접속을 물으면 <strong>항상 허용</strong>을 누릅니다.</p>
+                </div></li>
+            </ol>
+        </section>
+
+        <section id="play">
+            <h2>플레이 방법</h2>
+            <p class="intro">채팅방에서 <code>VN 시작</code> 을 누르면 VN 화면이 켜지고, 그때부터 오는 AI 응답이 장면으로 재생됩니다. 카트리지에 오프닝이 있으면 그 채팅방에서 처음 켤 때 오프닝부터 나옵니다.</p>
+            <div class="block table-box">
+                <table class="controls">
+                    <tbody>
+                        <tr><th>다음 줄</th><td>대사창을 누릅니다. 글자가 나오는 중이면 그 줄을 한 번에 채웁니다.</td></tr>
+                        <tr><th>이전 줄</th><td>대사창 왼쪽의 <code>‹</code> 를 누릅니다.</td></tr>
+                        <tr><th>답장 보내기</th><td><code>대화 입력</code> 을 눌러 쓰고 <code>전송</code> 이나 <kbd>Ctrl</kbd> + <kbd>Enter</kbd>. 글은 크랙 입력창으로 들어가 그대로 전송됩니다.</td></tr>
+                        <tr><th>지난 대사 보기</th><td><code>로그</code> 를 누릅니다.</td></tr>
+                        <tr><th>창 닫기</th><td>창의 <code>×</code>, 창 바깥 누르기, 또는 <kbd>Esc</kbd>.</td></tr>
+                        <tr><th>잠깐 크랙 화면 쓰기</th><td>메뉴의 <code>⏸ 일시정지</code>. VN 화면을 지우지 않고 숨깁니다. 그동안 온 응답은 모아 두었다가 <code>▶ VN으로 돌아가기</code> 를 누르면 거기서부터 재생합니다.</td></tr>
+                        <tr><th>끄기</th><td>메뉴의 <code>VN 종료</code>. 다른 채팅방으로 옮겨도 VN 은 꺼집니다.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="note"><code>UI 테스트</code> 는 메시지를 보내지 않고 예시 장면을 띄웁니다. 카트리지를 넣은 뒤 그림과 메뉴가 잘 나오는지 볼 때 씁니다.</p>
+        </section>
+
+        <section id="menu">
+            <h2>메뉴와 화면</h2>
+            <p class="intro">오른쪽 위 <code>☰ 메뉴</code> 를 누르면 응답의 상태 블록에 적힌 내용을 항목별로 볼 수 있습니다.</p>
+            <div class="block panel-list">
+                <div class="panel"><h3>상태 항목</h3><p>소속, 관계, 소지품, 상황, 일정. AI 응답이 올 때마다 새 내용으로 바뀝니다.</p></div>
+                <div class="panel"><h3>카트리지 화면</h3><p>카트리지가 넣은 지도, 도감 같은 화면이 메뉴 탭에 붙습니다. <code>↗</code> 가 붙은 항목은 넓은 전용 창으로 열립니다.</p></div>
+                <div class="panel"><h3>일시정지 · 설정 · 종료</h3><p>메뉴 아래쪽 버튼입니다. VN 이 켜진 동안 왼쪽 아래 제어판은 숨고, 이 버튼들이 그 자리를 대신합니다.</p></div>
+            </div>
+        </section>
+
+        <section id="cartridge">
+            <h2>카트리지</h2>
+            <p class="intro">카트리지는 작품 전용 확장 파일(<code>.vncartridge</code>)입니다. 배경과 인물 그림, 음악, 화면 외형, 오프닝, 그리고 항행 지도 같은 작품만의 화면이 들어 있습니다. 작품 소개에서 받습니다.</p>
+            <ol class="block steps">
+                <li><div><h3>라이브러리 열기</h3><p>제어판의 <code>설정</code> → <code>📚 라이브러리</code>.</p></div></li>
+                <li><div><h3>파일 넣기</h3><p>점선 영역에 파일을 끌어 놓거나 <code>파일 선택</code> 을 누릅니다. 이름과 버전을 보여 주면 <strong>확인</strong>은 라이브러리에 저장하고 적용, <strong>취소</strong>는 저장하지 않고 이번만 적용입니다.</p></div></li>
+                <li><div><h3>다음부터</h3><p>저장한 카트리지는 라이브러리 카드를 눌러 적용합니다. 작품이 정해진 카트리지는 그 작품 채팅방에 들어가면 저절로 적용됩니다. 새 버전을 받으면 다시 넣어 바꿉니다.</p></div></li>
+            </ol>
+            <div class="block table-box">
+                <table class="controls">
+                    <tbody>
+                        <tr><th>입력창 명령</th><td>카트리지에 따라 대화 입력에 명령을 쓸 수 있습니다. 어떤 명령이 있는지는 작품 소개를 봅니다.</td></tr>
+                        <tr><th>시작 설정</th><td>카트리지에 따라 채팅방에서 처음 VN 을 켤 때 시작할 상황을 고르는 화면이 뜹니다. 고른 것은 그 채팅방에 기록되어 다시 묻지 않습니다.</td></tr>
+                        <tr><th>카트리지 빼기</th><td>등록되지 않은 작품으로 옮기면 적용했던 카트리지는 내려가고 엔진 기본 화면으로 돌아갑니다.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="settings">
+            <h2>설정</h2>
+            <p class="intro"><code>설정</code> 창은 일반 설정, 환경 설정, 라이브러리 세 탭입니다.</p>
+            <div class="block panel-list">
+                <div class="panel"><h3>환경 설정</h3><p>BGM 음량, 글자가 나오는 속도(느림 ~ 빠름), 카트리지 외형 사용. 외형을 끄면 카트리지가 색과 배치를 바꿔도 엔진 기본 외형으로 봅니다. <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd> 로도 끄고 켭니다.</p></div>
+                <div class="panel"><h3>모드 선택</h3><p><strong>비주얼챗 모드</strong>(기본)는 응답이 부르는 그림을 배경과 인물로 나눠 띄웁니다. <strong>범용 모드</strong>는 배경 하나를 정해 두고 그림을 가운데에 띄웁니다.</p></div>
+                <div class="panel"><h3>BGM 규칙</h3><p>그림 이름에 들어간 낱말과 음악 주소를 짝지어 두면 그 그림이 나올 때 음악을 바꿉니다. 카트리지가 이미 넣어 둔 규칙도 여기 보입니다.</p></div>
+                <div class="panel"><h3>UI 위치 편집</h3><p>대사창과 인물 자리를 끌어서 옮깁니다. 편집을 마치면 그 자리를 기억합니다.</p></div>
+            </div>
+        </section>
+
+        <section id="mobile">
+            <h2>폰에서</h2>
+            <p class="intro">폰은 가로로 들고 플레이하는 것을 기준으로 합니다. 따로 설치할 모바일판은 없고, 화면 높이가 낮으면 같은 스크립트가 알아서 배치를 바꿉니다.</p>
+            <div class="block table-box">
+                <table class="controls">
+                    <tbody>
+                        <tr><th>대사창 · 정보 바</th><td>크기와 여백이 줄고, 긴 대사는 대사창 안에서 넘깁니다.</td></tr>
+                        <tr><th>대화 입력</th><td>화면 위쪽에 뜹니다. 키보드가 아래 절반을 가리기 때문입니다.</td></tr>
+                        <tr><th>제어판</th><td>왼쪽 끝 서랍으로 접힌 채 시작합니다. 손잡이 <code>›</code> 를 누르면 펼쳐집니다.</td></tr>
+                        <tr><th>지도 같은 창</th><td>여백 없이 화면 전체로 열립니다.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="faq">
+            <h2>문제가 생기면</h2>
+            <div class="block faq">
+                <details>
+                    <summary>AI 응답이 왔는데 VN 화면에 안 나와요</summary>
+                    <ul>
+                        <li>Tampermonkey 가 <code>crack-api.wrtn.ai</code> 접속을 물었을 때 막았다면, 스크립트 설정에서 허용으로 바꿉니다.</li>
+                        <li><code>VN 종료</code> 후 다시 <code>VN 시작</code>, 그래도 안 되면 페이지를 새로 고칩니다.</li>
+                    </ul>
+                </details>
+                <details>
+                    <summary>그림이 안 나오고 대사만 나와요</summary>
+                    <ul>
+                        <li>그 작품의 카트리지를 적용했는지 라이브러리에서 봅니다. 적용하면 「설정이 적용되었습니다」 알림이 잠깐 뜹니다.</li>
+                        <li>설정의 모드가 비주얼챗 모드인지 봅니다.</li>
+                        <li>AI 가 이번 응답에서 그림을 부르지 않았을 수도 있습니다. 응답 원문에 <code>![…]</code> 줄이 있는지 크랙 화면에서 봅니다.</li>
+                    </ul>
+                </details>
+                <details>
+                    <summary>크랙 화면의 버튼을 잠깐 눌러야 해요</summary>
+                    <p>메뉴의 <code>⏸ 일시정지</code> 를 쓰면 VN 화면을 숨긴 채 크랙 화면을 쓸 수 있습니다. 돌아가면 멈춘 자리에서 이어집니다.</p>
+                </details>
+                <details>
+                    <summary>카트리지가 화면을 이상하게 바꿨어요</summary>
+                    <p><code>설정 → 환경 설정 → 카트리지 외형 사용</code> 을 끄거나 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd> 를 누르면 엔진 기본 외형으로 돌아갑니다.</p>
+                </details>
+                <details>
+                    <summary>다른 채팅방으로 옮겼더니 VN 이 꺼졌어요</summary>
+                    <p>채팅방을 옮기면 VN 은 꺼지는 것이 정상입니다. 새 채팅방에서 다시 <code>VN 시작</code> 을 누릅니다.</p>
+                </details>
+            </div>
+        </section>
+
+        <section id="maker">
+            <div class="maker">
+                <div>
+                    <h3>카트리지를 만들고 싶다면</h3>
+                    <p>그림, 음악, 지도 같은 화면을 넣어 내 작품의 카트리지를 만드는 방법은 제작자 안내에서 따로 다룹니다.</p>
+                </div>
+                <a class="btn" id="maker-link" href="#maker" aria-disabled="true">제작자 안내 <small>준비 중</small></a>
+            </div>
+        </section>
+    </div>
+</main>
+
+<footer>
+    <div class="wrap">Visual Novel Engine for Crack · 플레이어 안내 · 엔진 3.37.2 기준</div>
+</footer>
+
+<script>
+(() => {
+    // 나중에 주소를 넣으면 버튼이 살아난다. 비어 있으면 「준비 중」 으로 남는다.
+    const MAKER_URL = '';
+    const INSTALL_URL = '';
+    const arm = (ids, url) => ids.forEach(id => {
+        const link = document.getElementById(id);
+        if (!link) return;
+        if (url) {
+            link.href = url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.removeAttribute('aria-disabled');
+            link.querySelector('small')?.remove();
+        } else {
+            link.addEventListener('click', event => event.preventDefault());
+        }
+    });
+    arm(['maker-link', 'maker-link-top'], MAKER_URL);
+    arm(['install-link'], INSTALL_URL);
+    // 위의 「제작자 안내」 는 준비 중일 때 아래 안내 칸으로 내려 준다.
+    if (!MAKER_URL) {
+        const top = document.getElementById('maker-link-top');
+        top.addEventListener('click', () => document.getElementById('maker').scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    }
+
+    // 예시 VN 화면: 누르면 다음 줄. 마지막 줄 뒤에는 「대화 입력」 을 가리키고 처음으로 돌아간다.
+    const lines = [
+        { name: null, text: '비 내리는 정거장. 마지막 셔틀이 막 떠났다.', figure: false },
+        { name: '리텐', text: '늦었네. 다음 셔틀까지는 세 시간이야.', figure: true },
+        { name: '리텐', text: '기다리는 동안 이야기나 할까?', figure: true }
+    ];
+    const stage = document.getElementById('demo');
+    const lineEl = document.getElementById('demo-line');
+    const nameEl = document.getElementById('demo-name');
+    const figure = document.getElementById('demo-figure');
+    const hint = document.getElementById('demo-hint');
+    const send = document.getElementById('demo-send');
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let index = 0;
+    let typing = null;
+
+    const show = (line, animate) => {
+        clearInterval(typing);
+        typing = null;
+        nameEl.hidden = !line.name;
+        nameEl.textContent = line.name || '';
+        lineEl.classList.toggle('narration', !line.name);
+        figure.classList.toggle('away', !line.figure);
+        if (!animate || reduce) { lineEl.textContent = line.text; return; }
+        let shown = 0;
+        lineEl.textContent = '';
+        typing = setInterval(() => {
+            shown += 1;
+            lineEl.textContent = line.text.slice(0, shown);
+            if (shown >= line.text.length) { clearInterval(typing); typing = null; }
+        }, 45);
+    };
+
+    const advance = () => {
+        if (typing) { show(lines[index], false); return; }   // 글자가 나오는 중이면 그 줄을 채운다
+        if (index === lines.length - 1) {
+            if (!send.classList.contains('pulse')) {
+                send.classList.add('pulse');
+                hint.textContent = '이제 답장을 쓸 차례 · 누르면 처음부터';
+                return;
+            }
+            send.classList.remove('pulse');
+            index = 0;
+        } else {
+            index += 1;
+        }
+        hint.textContent = '눌러서 다음 ▸';
+        show(lines[index], true);
+    };
+    stage.addEventListener('click', advance);
+    stage.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        advance();
+    });
+    show(lines[0], false);
+
+    // 목차: 지금 읽는 부분을 표시한다
+    const links = [...document.querySelectorAll('.toc a')];
+    const targets = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+    if ('IntersectionObserver' in window) {
+        const seen = new Map();
+        const observer = new IntersectionObserver(entries => {
+            entries.forEach(entry => seen.set(entry.target.id, entry.isIntersecting));
+            const current = targets.find(target => seen.get(target.id));
+            links.forEach(link => link.classList.toggle('on', current && link.getAttribute('href') === '#' + current.id));
+        }, { rootMargin: '-20% 0px -60% 0px' });
+        targets.forEach(target => observer.observe(target));
+    }
+})();
+</script>
+</body>
+</html>
