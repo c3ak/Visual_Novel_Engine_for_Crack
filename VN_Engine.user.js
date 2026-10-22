@@ -858,6 +858,12 @@ window.VNCartridge = (function () {
             return value !== null && typeof value === 'object' && !Array.isArray(value);
         },
 
+        // https: · data: · blob: · //, / 로 시작하지 않으면 패키지 안 경로로 본다 (coverUrl 등).
+        isPackagePath(value) {
+            const text = String(value || '').trim();
+            return Boolean(text) && !/^([a-z][a-z0-9+.-]*:|\/)/i.test(text);
+        },
+
         sanitizeId(value) {
             return String(value || 'manual').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'manual';
         },
@@ -1129,6 +1135,12 @@ window.VNCartridge = (function () {
                     });
                 }
             });
+            // 표지(coverUrl)를 패키지 안 경로로 적었으면 그 그림이 있어야 한다.
+            const coverUrl = cartridge.manifest.coverUrl;
+            if (CartridgeFormat.isPackagePath(coverUrl)) {
+                if (!MODULE_IMAGE_PATTERN.test(coverUrl)) throw new Error(`표지는 이미지 파일이어야 합니다: coverUrl → ${coverUrl}`);
+                if (!files.has(coverUrl)) throw new Error(`표지 그림 파일을 찾을 수 없습니다: coverUrl → ${coverUrl}`);
+            }
             return { cartridge, files, bytes, packageType: isProtected ? 'protected' : 'zip' };
         }
     };
@@ -1150,7 +1162,8 @@ window.VNCartridge = (function () {
             });
         },
 
-        async put(cartridgeId, bytes, fileName) {
+        // cover 는 패키지 안 표지 그림(Blob). 서재 카드가 카트리지를 풀지 않고 바로 쓰도록 따로 둔다.
+        async put(cartridgeId, bytes, fileName, cover = null) {
             const database = await this.open();
             return new Promise((resolve, reject) => {
                 const transaction = database.transaction(this.storeName, 'readwrite');
@@ -1158,6 +1171,7 @@ window.VNCartridge = (function () {
                     id: cartridgeId,
                     fileName,
                     blob: new Blob([bytes], { type: 'application/vnd.vn-engine.cartridge+zip' }),
+                    cover,
                     installedAt: new Date().toISOString()
                 });
                 transaction.oncomplete = () => { database.close(); resolve(); };
@@ -1753,6 +1767,9 @@ window.VNCartridge = (function () {
             Object.values(this.activeCartridge?.modules || {}).forEach(definition => {
                 if (CartridgeFormat.isPlainObject(definition?.images)) Object.values(definition.images).forEach(path => moduleImagePaths.add(path));
             });
+            // 표지 그림도 서재 카드용이라 ![이름] 으로 부르는 그림이 아니다
+            const coverUrl = this.activeCartridge?.manifest?.coverUrl;
+            if (CartridgeFormat.isPackagePath(coverUrl)) moduleImagePaths.add(coverUrl);
             const imagePaths = [...this.packageFiles.keys()]
                 .filter(path => imagePattern.test(path) && !moduleImagePaths.has(path))
                 .sort();
@@ -2943,7 +2960,9 @@ window.VNCartridge = (function () {
         },
 
         async addPackage(packageData, fileName) {
-            await CartridgePackageStore.put(packageData.cartridge.manifest.id, packageData.bytes, fileName);
+            const manifest = packageData.cartridge.manifest;
+            await CartridgePackageStore.put(manifest.id, packageData.bytes, fileName, this.extractCover(manifest.coverUrl, packageData.files));
+            this.forgetCover(manifest.id);
             const preset = this.addPreset(packageData.cartridge, packageData.cartridge.manifest.name, packageData.cartridge.manifest.coverUrl);
             preset.packageId = packageData.cartridge.manifest.id;
             this.save();
@@ -2953,10 +2972,55 @@ window.VNCartridge = (function () {
         async deletePreset(id) {
             if(confirm("정말 이 프리셋을 삭제하시겠습니까?")) {
                 const preset = this.presets.find(item => item.id === id);
-                if (preset?.packageId) await CartridgePackageStore.delete(preset.packageId).catch(error => console.warn(error));
+                if (preset?.packageId) {
+                    await CartridgePackageStore.delete(preset.packageId).catch(error => console.warn(error));
+                    this.forgetCover(preset.packageId);
+                }
                 this.presets = this.presets.filter(p => p.id !== id);
                 this.save();
             }
+        },
+
+        // --- 패키지 안 표지 ---
+        // coverUrl 이 주소가 아니라 패키지 안 경로(assets/cover/cover.webp)면, 설치할 때 그 그림을 꺼내 저장소에 같이 둔다.
+        // 서재 카드는 저장소에서 그림만 읽어 blob: 주소로 그린다. localStorage 에는 경로 문자열만 남는다.
+        coverUrls: new Map(),
+        coverLoading: new Set(),
+
+        extractCover(coverUrl, files) {
+            if (!CartridgeFormat.isPackagePath(coverUrl) || !files) return null;
+            const bytes = files.get(coverUrl);
+            return bytes ? new Blob([bytes], { type: CartridgeRuntime.mimeTypeForPath(coverUrl) }) : null;
+        },
+
+        forgetCover(packageId) {
+            const url = this.coverUrls.get(packageId);
+            if (url) URL.revokeObjectURL(url);
+            this.coverUrls.delete(packageId);
+            this.coverLoading.delete(packageId);
+        },
+
+        async loadCover(packageId) {
+            if (this.coverLoading.has(packageId)) return;
+            this.coverLoading.add(packageId);
+            let url = '';
+            try {
+                const record = await CartridgePackageStore.get(packageId);
+                if (record?.cover) url = URL.createObjectURL(record.cover);
+            } catch (error) {
+                console.warn('VN Engine: 카트리지 표지를 읽을 수 없습니다', packageId, error);
+            }
+            this.coverUrls.set(packageId, url);
+            if (url) this.render();
+        },
+
+        coverSource(preset) {
+            if (!preset.coverUrl) return '';
+            if (!CartridgeFormat.isPackagePath(preset.coverUrl)) return preset.coverUrl;
+            if (!preset.packageId) return '';
+            if (this.coverUrls.has(preset.packageId)) return this.coverUrls.get(preset.packageId);
+            this.loadCover(preset.packageId);
+            return '';
         },
 
         updateCover(id) {
@@ -3123,8 +3187,9 @@ window.VNCartridge = (function () {
 
         let html = '<div class="vn-library-grid">';
         this.presets.forEach(p => {
-            const bgStyle = p.coverUrl ? `background-image: url('${p.coverUrl}');` : 'background: linear-gradient(45deg, #333, #555); display: flex; align-items: center; justify-content: center;';
-            const noImgContent = p.coverUrl ? '' : '<span style="font-size: 2em;">💿</span>';
+            const cover = this.coverSource(p);
+            const bgStyle = cover ? `background-image: url('${cover}');` : 'background: linear-gradient(45deg, #333, #555); display: flex; align-items: center; justify-content: center;';
+            const noImgContent = cover ? '' : '<span style="font-size: 2em;">💿</span>';
 
             html += `
                 <div class="vn-cartridge">
