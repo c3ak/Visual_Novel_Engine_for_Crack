@@ -1,0 +1,778 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:vn-engine:schema:package-manifest:1",
+  "title": "VN Engine Cartridge package manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "formatVersion",
+    "id",
+    "name",
+    "version",
+    "engineVersion",
+    "storyIds",
+    "presentation",
+    "modules",
+    "assets"
+  ],
+  "properties": {
+    "format": {
+      "const": "vn-engine-cartridge"
+    },
+    "formatVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "engineVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "author": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "storyIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "coverUrl": {
+      "description": "서재 카드 표지 그림. 패키지 안 이미지 경로(assets/cover/cover.webp) 또는 https:// 주소. 경로면 그 파일이 패키지에 있어야 한다.",
+      "type": "string"
+    },
+    "skin": {
+      "description": "엔진 UI 안으로 범위가 제한되어 주입되는 CSS 파일 경로.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "theme": {
+      "description": "UI 테마. 토큰 객체를 직접 쓰거나 패키지 안의 JSON 파일 경로를 쓴다.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "home": {
+      "description": "대화하지 않을 때 머무는 방 화면. 캐릭터를 누르면 선택지가 뜨고, talk 선택지는 대사창·입력창·스탠딩이 있는 대화 화면으로 넘어간다. 그림 대신 모듈(module)을 방 화면으로 띄울 수 있다. background 와 module 중 하나는 있어야 한다.",
+      "type": "object",
+      "properties": {
+        "background": {
+          "description": "방 배경 그림 이름. module 을 쓰면 생략할 수 있다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "module": {
+          "description": "방 화면으로 띄울 view 모듈 ID. 그 모듈이 걸어 다니는 맵처럼 화면을 직접 그리고, VNCartridge.talkTo(캐릭터 id) 로 대화를 건다. 대화하는 동안에는 대사창 뒤에 배경으로 깔린다. 무대(config.stage) 모듈은 안 된다. 이 모듈은 메뉴 탭에 나오지 않는다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "endLabel": {
+          "description": "대사창 위 돌아가기 버튼의 글자. 생략하면 '대화 종료'.",
+          "type": "string"
+        },
+        "characters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "image": {
+                "description": "방 화면에 세워 둘 그림 이름.",
+                "type": "string"
+              },
+              "rect": {
+                "description": "배경 그림 기준 [가로위치, 세로위치, 너비, 높이] 0~1 비율. 그림 방 화면에서는 필수, module 방 화면에서는 생략한다(모듈이 인물을 그린다).",
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "standing": {
+                "description": "대화 화면에서 띄울 스탠딩 그림 이름.",
+                "type": "string"
+              },
+              "choices": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "action"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "action": {
+                      "enum": [
+                        "talk",
+                        "message"
+                      ]
+                    },
+                    "line": {
+                      "description": "talk: 대사창에 띄울 나레이션. {name} 은 캐릭터 이름.",
+                      "type": "string"
+                    },
+                    "tellAi": {
+                      "description": "talk: AI 문맥 대기열에 넣을 문장. {name} 은 캐릭터 이름.",
+                      "type": "string"
+                    },
+                    "text": {
+                      "description": "message: 띄울 알림. {name} 은 캐릭터 이름.",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "background"
+          ]
+        },
+        {
+          "required": [
+            "module"
+          ]
+        }
+      ],
+      "if": {
+        "not": {
+          "required": [
+            "module"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "characters": {
+            "items": {
+              "required": [
+                "rect"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "hotspots": {
+      "description": "배경 그림 위의 누를 수 있는 자리. 누르면 그 카트리지의 모듈들에 hotspot 신호를 보내고 (VNCartridge.on(\"hotspot\")), image 가 있으면 그림 창을 띄운다.",
+      "type": "object",
+      "properties": {
+        "reveal": {
+          "description": "전체 기본값. always 은은한 테두리 / hover 마우스를 올리면 테두리 / hidden 아무 표시 없음.",
+          "enum": [
+            "always",
+            "hover",
+            "hidden"
+          ]
+        },
+        "areas": {
+          "description": "키는 배경 그림 이름. 그 배경이 떠 있을 때만 자리가 생긴다.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "rect"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "자리 이름. 누르면 모듈이 받는 hotspot 신호의 id 다."
+                },
+                "rect": {
+                  "description": "배경 그림 기준 [가로위치, 세로위치, 너비, 높이] 0~1 비율. 너비와 높이는 0 보다 커야 한다.",
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "image": {
+                  "description": "눌렀을 때 띄울 그림 이름. 없으면 그림 창 없이 모듈에 신호만 간다.",
+                  "type": "string"
+                },
+                "label": {
+                  "description": "그림 창 아래 이름표.",
+                  "type": "string"
+                },
+                "reveal": {
+                  "enum": [
+                    "always",
+                    "hover",
+                    "hidden"
+                  ]
+                },
+                "tellAi": {
+                  "type": "object",
+                  "required": [
+                    "text"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "animations",
+        "bgm",
+        "opening"
+      ],
+      "properties": {
+        "animations": {
+          "description": "그림 이름에 trigger 가 들어 있으면 인물이 나올 때 애니메이션을 건다.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "trigger",
+              "animation"
+            ],
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "minLength": 1
+              },
+              "animation": {
+                "enum": [
+                  "shake-vertical",
+                  "shake-horizontal",
+                  "flash",
+                  "bounce",
+                  "vibrate",
+                  "fall-left"
+                ]
+              }
+            }
+          }
+        },
+        "bgm": {
+          "description": "그림 이름에 trigger 가 들어 있으면 audioUrl 의 음악으로 바꾼다. 배경과 인물·CG 그림 모두.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "trigger",
+              "audioUrl"
+            ],
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "minLength": 1
+              },
+              "audioUrl": {
+                "type": "string",
+                "minLength": 1,
+                "description": "외부 주소, 또는 카트리지 안의 소리 파일 경로 (예: assets/audio/x.mp3)."
+              },
+              "loop": {
+                "description": "false 면 한 번만 튼다. 없으면 반복.",
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "opening": {
+          "description": "VN 시작 때 재생하는 스크립트. 채팅방마다 한 번. 여러 개면 고르는 창이 뜬다. content 는 문자열만 된다.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "scenes": {
+          "description": "이야기 도중 조건이 맞으면 끼워 넣는 장면.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "when",
+              "content"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "장면 이름. 한 번만 트는 기록에 쓰이므로 카트리지 안에서 겹치면 안 된다.",
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "when": {
+                "description": "조건. 적은 것이 모두 맞아야 장면을 튼다. 모르는 조건 이름이 있으면 엔진은 그 장면을 뺀다.",
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "text": {
+                    "description": "응답 원문에 이 글자가 있으면 (배열이면 하나라도). 대소문자만 무시.",
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "in": {
+                    "description": "text 를 찾을 범위. text 와 함께만 쓴다. 기본 all.",
+                    "oneOf": [
+                      {
+                        "enum": [
+                          "all",
+                          "dialogue",
+                          "narration",
+                          "status",
+                          "hidden"
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "enum": [
+                            "all",
+                            "dialogue",
+                            "narration",
+                            "status",
+                            "hidden"
+                          ]
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "date": {
+                    "description": "상태창 날짜. on 정확히 그날 / from 그날이거나 그 뒤. \"2025년 05월 15일\" 형식.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "on": {
+                        "type": "string",
+                        "pattern": "\\d+\\s*년\\s*\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일"
+                      },
+                      "from": {
+                        "type": "string",
+                        "pattern": "\\d+\\s*년\\s*\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일"
+                      }
+                    }
+                  },
+                  "location": {
+                    "description": "상태창 위치에 이 글자가 들어 있으면.",
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "weather": {
+                    "description": "상태창 날씨에 이 글자가 들어 있으면.",
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "time": {
+                    "description": "상태창 시각과 같으면 (HH:MM).",
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "dayPeriod": {
+                    "description": "상태창 시간대와 같으면.",
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "weekday": {
+                    "description": "상태창 요일과 같으면.",
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "section": {
+                    "description": "{ \"소지품\": \"열쇠\" } — 상태창 그 항목에 이 글자가 있으면.",
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "repeat": {
+                "description": "once 채팅방마다 한 번 (기본) / every 조건이 맞을 때마다.",
+                "enum": [
+                  "once",
+                  "every"
+                ]
+              },
+              "play": {
+                "description": "after 면 글자 조건이 있어도 응답이 끝난 뒤에 튼다.",
+                "const": "after"
+              },
+              "tellAi": {
+                "description": "장면을 틀 때 다음 메시지에 붙여 보낼 글.",
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "text"
+                    ],
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              "content": {
+                "description": "장면 스크립트. 문자열 또는 줄 배열.",
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "enabled",
+          "version",
+          "entry",
+          "config"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "enum": [
+              "view",
+              "service",
+              "builtin",
+              "custom"
+            ],
+            "description": "view 는 메뉴에서 여는 화면(config.stage 가 true 면 VN 시작 때 전체 화면 무대), service 는 화면 없이 상시 도는 모듈이다. builtin · custom 은 엔진이 띄우지 않는다."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "entry": {
+            "type": "string",
+            "minLength": 1
+          },
+          "styles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "scripts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "dataFiles": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "images": {
+            "description": "모듈 화면 안에서 쓸 그림 { 이름: 패키지 안 경로 }. 엔진이 data: 주소로 바꿔 VNCartridge.images 에 넣고, VNCartridge.loadImage(이름) 로 <img> 를 받는다. 여기 적은 그림은 ![이름] 으로 부르는 그림 색인에서 빠진다.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "\\.(png|jpe?g|gif|webp|avif|bmp|svg)$"
+            }
+          },
+          "config": {
+            "type": "object"
+          },
+          "command": {
+            "description": "이 토큰이 든 메시지는 바로 보내지 않고 이 모듈을 먼저 연다. 모듈이 commitChat() 을 부르면 보낸다.",
+            "type": "object",
+            "required": [
+              "token"
+            ],
+            "properties": {
+              "token": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1
+                  }
+                ]
+              }
+            }
+          },
+          "menu": {
+            "description": "false 면 처음엔 메뉴에서 숨긴다. 모듈이 VNCartridge.menu.show/hide 로 바꾸면 엔진이 이야기마다 기억한다. 숨은 동안 command 토큰도 듣지 않는다. VNCartridge.openView 로는 숨어 있어도 열린다.",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "assets": {
+      "type": "object",
+      "properties": {
+        "images": {
+          "description": "![이름] 으로 부를 이미지 표. 값은 외부 주소이거나 패키지 안의 경로다.",
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "enum": [
+                      "background",
+                      "character"
+                    ]
+                  },
+                  "characterId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "anyOf": [
+                  {
+                    "required": [
+                      "url"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "path"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

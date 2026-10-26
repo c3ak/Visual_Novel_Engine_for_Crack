@@ -169,7 +169,7 @@ footer { border-top: 1px solid var(--line); padding-block: 20px 32px; color: var
             <p class="lead">AI 가 보낸 응답을 배경, 인물, 이름표가 달린 대사창으로 바꿔 한 줄씩 보여 주는 브라우저 확장 스크립트입니다. 크랙에서 하던 대화는 그대로이고, 보는 화면만 바뀝니다.</p>
             <div class="hero-actions">
                 <a class="btn primary" href="#install">설치하기</a>
-                <a class="btn" id="maker-link-top" href="#maker" aria-disabled="true">제작자 안내 <small>준비 중</small></a>
+                <a class="btn" id="maker-link-top" href="creator.html">제작자 안내</a>
             </div>
             <p class="version">엔진 v4 · 크랙(crack.wrtn.ai) 전용</p>
         </div>
@@ -340,7 +340,7 @@ footer { border-top: 1px solid var(--line); padding-block: 20px 32px; color: var
                     <h3>카트리지를 만들고 싶다면</h3>
                     <p>그림, 음악, 지도 같은 화면을 넣어 내 작품의 카트리지를 만드는 방법은 제작자 안내에서 따로 다룹니다.</p>
                 </div>
-                <a class="btn" id="maker-link" href="#maker" aria-disabled="true">제작자 안내 <small>준비 중</small></a>
+                <a class="btn" id="maker-link" href="creator.html">제작자 안내</a>
             </div>
         </section>
     </div>
@@ -353,15 +353,18 @@ footer { border-top: 1px solid var(--line); padding-block: 20px 32px; color: var
 <script>
 (() => {
     // 나중에 주소를 넣으면 버튼이 살아난다. 비어 있으면 「준비 중」 으로 남는다.
-    const MAKER_URL = '';
+    const MAKER_URL = 'creator.html';
     const INSTALL_URL = 'https://raw.githubusercontent.com/c3ak/Visual_Novel_Engine_for_Crack/main/VN_Engine.user.js?v=6302f4bd788d';
     const arm = (ids, url) => ids.forEach(id => {
         const link = document.getElementById(id);
         if (!link) return;
         if (url) {
             link.href = url;
-            link.target = '_blank';
-            link.rel = 'noopener';
+            // 같은 사이트 안의 페이지(제작자 안내)는 그 탭에서 연다
+            if (/^https?:/.test(url)) {
+                link.target = '_blank';
+                link.rel = 'noopener';
+            }
             link.removeAttribute('aria-disabled');
             link.querySelector('small')?.remove();
         } else {
