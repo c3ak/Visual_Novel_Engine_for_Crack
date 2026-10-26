@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VN 카트리지 스튜디오 (보호판)</title>
+<title>VN 카트리지 스튜디오</title>
 <style>
     :root {
         color-scheme: dark;
@@ -262,6 +262,72 @@
         opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
     }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
+/* The build embeds these styles into the downloadable standalone HTML. */
+body { min-width: 0; }
+.workspace, .content, .panel, .runner, .file-layout, .viewer, .stage { min-width: 0; }
+.topbar { height: auto; min-height: 58px; flex-wrap: wrap; padding: 12px 20px; gap: 10px; }
+.loaded-name { flex: 1 1 180px; white-space: normal; overflow-wrap: anywhere; }
+.protect-options { flex-wrap: wrap; white-space: normal; }
+.content { padding-bottom: 85px; }
+.form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: var(--muted); font-size: 12px; }
+.field.wide { grid-column: 1 / -1; }
+.field input:not([type=checkbox]), .field textarea, .field select {
+    width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: 7px;
+    padding: 10px 12px; background: #07131f; color: var(--text); font: inherit; line-height: 1.6;
+}
+.field textarea { min-height: 100px; resize: vertical; font-family: ui-monospace,Consolas,monospace; }
+.field textarea.script-editor { min-height: 230px; }
+.field input:focus, .field textarea:focus, .field select:focus { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.field input:read-only { color: var(--dim); }
+.check-field { flex-direction: row; align-items: center; }
+.editor-card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); margin: 16px 0; padding: 18px; }
+.editor-card h3 { margin: 0 0 14px; font-size: 15px; overflow-wrap: anywhere; }
+.editor-card summary { cursor: pointer; font-size: 15px; font-weight: 700; padding-bottom: 15px; overflow-wrap: anywhere; }
+.editor-card .toolbar { margin-top: 16px; margin-bottom: 0; }
+.form-state { margin: 10px 0 0; color: var(--mint); font-size: 12px; overflow-wrap: anywhere; }
+.form-state.bad { color: var(--red); }
+.field-help { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.code-links { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; }
+.draft-status { position: fixed; bottom: 0; left: 0; right: 0; padding: 7px 16px; background: #07131f; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; z-index: 10; }
+.draft-banner { padding: 12px 20px; border-bottom: 1px solid var(--line); background: #132b30; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; }
+.opening-preview { padding: 16px; border: 1px solid var(--line-strong); border-radius: 12px; margin-top: 20px; }
+.opening-scene { position: relative; aspect-ratio: 16 / 9; min-height: 240px; max-height: 520px; background: #102134 center/cover no-repeat; overflow: hidden; border-radius: 9px; }
+.opening-character { position: absolute; height: 90%; max-width: 70%; object-fit: contain; bottom: 0; left: 50%; transform: translateX(-50%); }
+.opening-dialogue { position: absolute; left: 4%; right: 4%; bottom: 5%; padding: 16px; background: rgba(3,10,18,.9); border: 1px solid var(--line); border-radius: 9px; color: var(--text); font-size: 15px; line-height: 1.8; white-space: pre-wrap; max-height: 50%; overflow: auto; }
+.opening-dialogue b { display: block; color: var(--mint); }
+#vn-studio-services { display: none; }
+@media(max-width:1000px) {
+    .workspace { grid-template-columns: 155px minmax(0,1fr); }
+    .runner, .file-layout { grid-template-columns: minmax(0,1fr); }
+    .content { padding: 18px 18px 85px; }
+    .stage .frame-box { height: 55vh; min-height: 300px; }
+}
+@media(max-width:650px) {
+    .workspace { display: flex; flex-direction: column; overflow: auto; }
+    .rail { flex-direction: row; flex-shrink: 0; overflow-x: auto; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .rail-title { display: none; }
+    .rail button { flex-shrink: 0; padding: 9px 12px; }
+    .content { overflow: visible; padding: 16px 12px 80px; }
+    .topbar { padding: 10px 12px; gap: 8px; }
+    .brand { font-size: 11px; letter-spacing: .08em; }
+    .engine-badge { font-size: 10px; }
+    .topbar .spacer { display: none; }
+    .loaded-name { order: 2; flex-basis: 100%; font-size: 12px; }
+    .topbar .btn { padding: 8px 10px; font-size: 12px; }
+    .protect-options { font-size: 11px; }
+    .form-grid { grid-template-columns: minmax(0,1fr); }
+    .editor-card { padding: 14px; }
+    .intro { padding: 18px; }
+    .dropzone { box-sizing: border-box; padding: 32px 18px; }
+    .dropzone .row, .toolbar { flex-wrap: wrap; }
+    .facts { grid-template-columns: 110px minmax(0,1fr); }
+    .facts > div { overflow-wrap: anywhere; }
+    .stage header { flex-wrap: wrap; }
+    .stage header select { max-width: 100%; }
+    .opening-dialogue { font-size: 12px; padding: 10px; }
+}
+
 </style>
 </head>
 <body>
@@ -300,6 +366,7 @@
     <nav class="rail">
         <div class="rail-title">CARTRIDGE</div>
         <button type="button" class="active" data-panel="overview">개요</button>
+        <button type="button" data-panel="opening">오프닝</button>
         <button type="button" data-panel="modules">모듈 <span class="count" id="count-modules">0</span></button>
         <button type="button" data-panel="media">미디어 <span class="count" id="count-media">0</span></button>
         <button type="button" data-panel="files">파일 <span class="count" id="count-files">0</span></button>
@@ -314,11 +381,19 @@
             <div id="problems" class="problems"></div>
             <div id="overview-stats" class="stat-row"></div>
             <div id="overview-facts" class="facts"></div>
+            <h3>기본 정보 편집</h3><div id="basic-editor"></div>
         </section>
 
+        <section class="panel" data-panel="opening">
+            <h2>오프닝 편집</h2>
+            <p class="hint">시작 장면을 여러 개 만들 수 있습니다. 입력은 자동 반영됩니다. 여러 오프닝이 있으면 플레이어가 시작할 장면을 고릅니다.</p>
+            <div class="toolbar"><button class="btn primary" id="add-opening" type="button">오프닝 추가</button></div>
+            <div id="opening-list"></div><div id="opening-preview" class="opening-preview" hidden></div>
+        </section>
         <section class="panel" data-panel="modules">
             <h2>모듈</h2>
-            <p class="hint">카트리지가 메뉴 탭으로 제공하는 화면과 그 구성 파일입니다.</p>
+            <p class="hint">모듈을 만들고 설정과 구성 파일을 편집합니다. 입력은 자동 반영되며 기존의 추가 설정도 유지됩니다.</p>
+            <div class="toolbar"><button class="btn primary" id="add-view" type="button">화면 모듈 만들기</button><button class="btn" id="add-service" type="button">상시 모듈 만들기</button><button class="btn" id="add-stage" type="button">전체 화면 모듈 만들기</button></div>
             <div id="module-list"></div>
         </section>
 
@@ -361,9 +436,8 @@
         <section class="panel" data-panel="runner">
             <h2>실행</h2>
             <p class="hint">
-                카트리지의 화면 모듈을 엔진과 <strong>똑같은 방식</strong>으로 띄웁니다.
-                엔진의 <code>createViewDocument</code>를 그대로 써서 같은 샌드박스 iframe에 넣고,
-                상태창·모듈 상태·AI 문맥 주고받기도 실제 엔진과 같은 통로를 씁니다.
+                선택한 화면과 상시 모듈을 함께 실행합니다. 엔진의 판독기와 격리된 모듈 실행 환경을 사용합니다.
+                상태창·공유 상태·AI 문맥을 확인할 수 있습니다. VN 대사창 연출과 작품 전체 흐름은 실제 엔진에서 확인해 주세요.
             </p>
             <div class="runner">
                 <div class="stage">
@@ -423,12 +497,14 @@
 </div>
 
 <div id="toast" class="toast"></div>
+<div id="draft-status" class="draft-status" role="status"></div>
 
 <script>// 이 블록은 VN_Engine.protect.user.js에서 자동으로 복사됩니다. 직접 고치지 마세요.
 // 원본 엔진 버전: 4.0.0
 window.VNEngineCore = (() => {
     'use strict';
     const getCurrentTargetId = () => ({ id: 'studio', type: 'studio' });
+    const DOM_IDS = { SERVICE_HOST: 'vn-studio-services', STAGE_OVERLAY: 'vn-studio-stage', MODULE_OVERLAY: 'vn-studio-module' };
 
     const localStorage = (() => {
         try {
@@ -3693,6 +3769,7 @@ const StatusInfoManager = {
         project.dirty = true;
         releaseMediaUrls();
         refresh(options);
+        scheduleDraft();
     }
 
     // --- 폴더 목록: 파일 경로에서 유도한 것 + 아직 비어 있는 폴더 ---
@@ -3732,10 +3809,14 @@ const StatusInfoManager = {
             if (typeof module?.entry === 'string') module.entry = remap(module.entry);
             if (Array.isArray(module?.styles)) module.styles = module.styles.map(remap);
             if (Array.isArray(module?.scripts)) module.scripts = module.scripts.map(remap);
-            if (module?.dataFiles && typeof module.dataFiles === 'object') {
-                Object.keys(module.dataFiles).forEach(key => { module.dataFiles[key] = remap(module.dataFiles[key]); });
-            }
+            ['dataFiles', 'images'].forEach(field => {
+                if (module?.[field] && typeof module[field] === 'object') Object.keys(module[field]).forEach(key => { module[field][key] = remap(module[field][key]); });
+            });
         });
+        if (typeof manifest.coverUrl === 'string') manifest.coverUrl = remap(manifest.coverUrl);
+        if (typeof manifest.theme === 'string') manifest.theme = remap(manifest.theme);
+        if (typeof manifest.skin === 'string') manifest.skin = remap(manifest.skin);
+        (manifest.presentation?.bgm || []).forEach(rule => { if (typeof rule?.audioUrl === 'string') rule.audioUrl = remap(rule.audioUrl); });
         const images = manifest.assets?.images;
         if (images && typeof images === 'object' && !Array.isArray(images)) {
             Object.entries(images).forEach(([key, definition]) => {
@@ -3757,7 +3838,7 @@ const StatusInfoManager = {
             if (typeof module?.entry === 'string') paths.add(module.entry);
             (Array.isArray(module?.styles) ? module.styles : []).forEach(value => paths.add(value));
             (Array.isArray(module?.scripts) ? module.scripts : []).forEach(value => paths.add(value));
-            Object.values(module?.dataFiles || {}).forEach(value => paths.add(value));
+            ['dataFiles', 'images'].forEach(field => Object.values(module?.[field] || {}).forEach(value => paths.add(value)));
         });
         const images = manifest.assets?.images;
         if (images && typeof images === 'object' && !Array.isArray(images)) {
@@ -3766,6 +3847,8 @@ const StatusInfoManager = {
                 else if (definition?.path) paths.add(definition.path);
             });
         }
+        [manifest.coverUrl, manifest.theme, manifest.skin].forEach(value => { if (typeof value === 'string' && CartridgeFormat.isPackagePath(value)) paths.add(value); });
+        (manifest.presentation?.bgm || []).forEach(rule => { if (CartridgeFormat.isPackagePath(rule?.audioUrl)) paths.add(rule.audioUrl); });
         return paths;
     }
 
@@ -3800,14 +3883,35 @@ const StatusInfoManager = {
         Object.entries(cartridge.modules || {}).forEach(([moduleId, definition]) => {
             const missing = [];
             if (definition.entry && !project.files.has(definition.entry)) missing.push(definition.entry);
-            (definition.styles || []).forEach(value => { if (!project.files.has(value)) missing.push(value); });
-            (definition.scripts || []).forEach(value => { if (!project.files.has(value)) missing.push(value); });
-            Object.values(definition.dataFiles || {}).forEach(value => { if (!project.files.has(value)) missing.push(value); });
+            ['styles','scripts'].forEach(field => {
+                if (definition[field] === undefined) return;
+                if (!Array.isArray(definition[field]) || definition[field].some(value => typeof value !== 'string' || !value.trim())) {
+                    problems.push(['error', '모듈 경로 형식 오류', `${moduleId}.${field}: 파일 경로 배열이어야 합니다.`]); return;
+                }
+                definition[field].forEach(value => { if (!project.files.has(value)) missing.push(value); });
+            });
+            ['dataFiles','images'].forEach(field => {
+                if (definition[field] === undefined) return;
+                if (!CartridgeFormat.isPlainObject(definition[field])) { problems.push(['error','모듈 파일 표 형식 오류',`${moduleId}.${field}: 객체여야 합니다.`]); return; }
+                Object.entries(definition[field]).forEach(([name,value]) => {
+                    if (!name.trim() || typeof value !== 'string' || !value.trim()) { problems.push(['error','모듈 파일 경로 오류',`${moduleId}.${field}.${name}`]); return; }
+                    if (!project.files.has(value)) missing.push(value);
+                    if (field === 'images' && !/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(value)) problems.push(['error','모듈 그림 형식 오류',value]);
+                    if (field === 'dataFiles' && value.toLowerCase().endsWith('.json') && project.files.has(value)) {
+                        try { JSON.parse(decoder.decode(project.files.get(value))); }
+                        catch (error) { problems.push(['error','모듈 JSON 데이터 오류',`${value}: ${error.message}`]); }
+                    }
+                });
+            });
             if (missing.length > 0) {
                 problems.push(['error', `모듈 ${moduleId}이 없는 파일을 가리킵니다`, missing.join(', ')]);
             }
         });
 
+        referencedPaths().forEach(value => {
+            if (CartridgeFormat.isPackagePath(value) && !project.files.has(value)) problems.push(['error', '참조한 파일이 없습니다', value]);
+        });
+        if (CartridgeFormat.isPackagePath(manifest.coverUrl) && !/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(manifest.coverUrl)) problems.push(['error','표지 그림 형식 오류',String(manifest.coverUrl)]);
         const clashes = nameClashes();
         if (clashes.size > 0) {
             problems.push(['warn', '이름이 겹치는 미디어가 있습니다',
@@ -3863,6 +3967,7 @@ const StatusInfoManager = {
     }
 
     async function addFiles(fileList, targetFolder = '') {
+        if (!flushEdits()) return;
         const incoming = [...fileList];
         if (incoming.length === 0) return;
         const folder = targetFolder ? `${targetFolder}/` : '';
@@ -3902,6 +4007,7 @@ const StatusInfoManager = {
     }
 
     function renameTo(sourcePath, destination, verb = '이름을 바꿨습니다') {
+        if (!flushEdits()) return;
         const folders = allFolders();
         const isFolder = folders.has(sourcePath);
         const renames = new Map();
@@ -3934,6 +4040,7 @@ const StatusInfoManager = {
     }
 
     function deleteEntry(targetPath) {
+        if (!flushEdits()) return;
         const folders = allFolders();
         const isFolder = folders.has(targetPath);
         const victims = isFolder
@@ -3961,6 +4068,7 @@ const StatusInfoManager = {
     }
 
     function createFolder() {
+        if (!flushEdits()) return;
         const parent = selectedFolder();
         const name = window.prompt('새 폴더 이름', '');
         if (!name) return;
@@ -3987,14 +4095,14 @@ const StatusInfoManager = {
         lastCartridge = cartridge;
         renderProblems(problems);
         renderOverview(cartridge, problems);
-        renderModules(cartridge);
+        if (!options.keepForms) { renderModules(cartridge); renderOpenings(); renderBasicEditor(); }
         renderMedia();
         renderTree();
         if (!options.keepViewer) renderViewer();
         renderRunnerModules(cartridge);
 
         const blocking = problems.some(([level]) => level === 'error');
-        el('export-button').disabled = blocking;
+        el('export-button').disabled = blocking || formErrors.size > 0 || exporting;
         el('export-button').title = blocking ? '오류를 먼저 해결하세요' : '';
 
         const label = el('loaded-name');
@@ -4017,9 +4125,9 @@ const StatusInfoManager = {
             const notice = document.createElement('div');
             notice.className = 'notice ok';
             const strong = document.createElement('strong');
-            strong.textContent = '이상 없음';
+            strong.textContent = '기본 검사 통과';
             notice.append(strong, document.createTextNode(
-                `VN Engine ${ENGINE_VERSION} 기준으로 문제를 찾지 못했습니다. 바로 내보낼 수 있습니다.`));
+                `VN Engine ${ENGINE_VERSION} 기준으로 확인된 오류가 없습니다. 내보낼 때 엔진 판독기로 최종 검사합니다.`));
             box.appendChild(notice);
             return;
         }
@@ -4091,81 +4199,6 @@ const StatusInfoManager = {
             }
             facts.append(key, cell);
         });
-    }
-
-    function renderModules(cartridge) {
-        const list = el('module-list');
-        const modules = cartridge ? Object.entries(cartridge.modules || {}) : [];
-        el('count-modules').textContent = modules.length;
-        if (modules.length === 0) {
-            list.replaceChildren(Object.assign(document.createElement('div'), {
-                className: 'empty-state',
-                textContent: '모듈이 없는 카트리지입니다. 이미지와 소리만 담아도 카트리지로 동작합니다.'
-            }));
-            return;
-        }
-        list.replaceChildren(...modules.map(([moduleId, definition]) => {
-            const card = document.createElement('div');
-            card.className = 'module-card';
-
-            const head = document.createElement('div');
-            head.className = 'module-head';
-            const title = document.createElement('strong');
-            title.textContent = definition.title || moduleId;
-            const typeTag = document.createElement('span');
-            typeTag.className = 'tag type';
-            typeTag.textContent = definition.type || 'unknown';
-            const stateTag = document.createElement('span');
-            stateTag.className = `tag ${definition.enabled === false ? 'off' : 'on'}`;
-            stateTag.textContent = definition.enabled === false ? '꺼짐' : '켜짐';
-            const idLabel = document.createElement('span');
-            idLabel.className = 'id mono';
-            idLabel.textContent = moduleId;
-            head.append(title, typeTag, stateTag, idLabel);
-
-            const body = document.createElement('div');
-            body.className = 'module-body';
-            const addRow = (label, node) => {
-                const key = document.createElement('span');
-                key.textContent = label;
-                body.append(key, node);
-            };
-            const pathNode = value => {
-                const div = document.createElement('div');
-                div.className = 'mono';
-                div.textContent = value || '—';
-                if (value && !project.files.has(value)) { div.style.color = 'var(--red)'; div.textContent = `${value} · 파일 없음`; }
-                return div;
-            };
-            const pathList = (values, labels) => {
-                if (!values || values.length === 0) {
-                    return Object.assign(document.createElement('div'), { textContent: '없음', style: 'color:var(--dim)' });
-                }
-                const ul = document.createElement('ul');
-                ul.className = 'mono';
-                values.forEach((value, index) => {
-                    const li = document.createElement('li');
-                    li.textContent = labels ? `${labels[index]} → ${value}` : value;
-                    if (!project.files.has(value)) li.className = 'missing';
-                    ul.appendChild(li);
-                });
-                return ul;
-            };
-
-            addRow('버전', Object.assign(document.createElement('div'), { className: 'mono', textContent: String(definition.version ?? '—') }));
-            addRow('화면 파일', pathNode(definition.entry));
-            addRow('스타일', pathList(definition.styles));
-            addRow('스크립트', pathList(definition.scripts));
-            const dataEntries = Object.entries(definition.dataFiles || {});
-            addRow('데이터', pathList(dataEntries.map(pair => pair[1]), dataEntries.map(pair => pair[0])));
-            const config = document.createElement('pre');
-            config.className = 'mono';
-            config.textContent = JSON.stringify(definition.config || {}, null, 2);
-            addRow('설정', config);
-
-            card.append(head, body);
-            return card;
-        }));
     }
 
     function renderMedia() {
@@ -4318,7 +4351,7 @@ const StatusInfoManager = {
             row.appendChild(actions);
 
             row.addEventListener('click', () => {
-                if (node.path !== selectedPath && !confirmLeaveEditor()) return;
+                if (!confirmLeaveEditor()) return;
                 selectedPath = node.path;
                 renderTree();
                 renderViewer();
@@ -4430,8 +4463,7 @@ const StatusInfoManager = {
     }
 
     function confirmLeaveEditor() {
-        if (!editorHasUnsavedChanges()) return true;
-        return window.confirm(`${editor.path}에 저장하지 않은 편집이 있습니다. 버릴까요?`);
+        return flushEdits();
     }
 
     function openEditor(filePath, text) {
@@ -4484,7 +4516,7 @@ const StatusInfoManager = {
             revertButton.disabled = !changed;
         };
 
-        textarea.addEventListener('input', () => { syncGutter(); syncState(); });
+        textarea.addEventListener('input', () => { syncGutter(); syncState(); scheduleDraft(); });
         textarea.addEventListener('scroll', () => { gutter.scrollTop = textarea.scrollTop; });
         textarea.addEventListener('keydown', event => {
             if (event.key === 'Tab') {
@@ -4513,20 +4545,22 @@ const StatusInfoManager = {
         const extension = extensionOf(editor.path);
         if (extension === 'json') {
             try { JSON.parse(editor.textarea.value); }
-            catch (error) { showToast(`JSON 오류라 저장하지 않았습니다 — ${error.message}`); return; }
+            catch (error) { showToast(`JSON 오류라 저장하지 않았습니다 — ${error.message}`); return false; }
         }
         project.files.set(editor.path, encoder.encode(editor.textarea.value));
         editor.original = editor.textarea.value;
-        markDirty({ keepViewer: true });
+        markDirty({ keepViewer: true, keepForms: editor.path !== MANIFEST_PATH });
         editor.state.textContent = '저장됨';
         editor.state.className = 'state';
         editor.saveButton.disabled = true;
         editor.revertButton.disabled = true;
         el('viewer-title').textContent = `${editor.path} · ${formatBytes(project.files.get(editor.path).length)}`;
         showToast(`${editor.path} 저장했습니다`);
+        return true;
     }
 
     function createTextFile() {
+        if (!flushEdits()) return;
         const parent = selectedFolder();
         const name = window.prompt('새 파일 이름 (확장자 포함)', 'script.js');
         if (!name) return;
@@ -4642,16 +4676,22 @@ const StatusInfoManager = {
     }
 
     function startRun() {
+        if (!flushEdits()) return;
         if (!lastCartridge) { showToast('manifest가 올바르지 않아 실행할 수 없습니다'); return; }
         const moduleId = el('run-module').value;
         const moduleDefinition = runnerModules().find(module => module.id === moduleId);
         if (!moduleDefinition) { showToast('실행할 화면 모듈이 없습니다'); return; }
 
         // 엔진과 같은 순서: 카트리지를 올리고, 상태창을 읽고, 화면 문서를 만듭니다.
-        CartridgeRuntime.activate(lastCartridge, project.files);
         StatusInfoManager.parse(el('status-text').value);
+        CartridgeRuntime.activate(lastCartridge, project.files);
         renderStatusSummary();
+        mountRunnerView(moduleDefinition);
+    }
 
+    function mountRunnerView(moduleDefinition) {
+        const previous = el('run-frame-box').querySelector('iframe');
+        if (previous) CartridgeRuntime.unregisterFrame(previous);
         let documentHtml;
         try {
             documentHtml = CartridgeRuntime.createViewDocument(moduleDefinition);
@@ -4676,6 +4716,7 @@ const StatusInfoManager = {
     }
 
     function stopRun() {
+        CartridgeRuntime.deactivate();
         el('run-frame-box').replaceChildren(Object.assign(document.createElement('div'), {
             className: 'placeholder', textContent: '«실행»을 누르면 여기에서 모듈이 돕니다.'
         }));
@@ -4728,6 +4769,10 @@ const StatusInfoManager = {
     }
 
     function startProject(files, fileName, dirty) {
+        clearTimeout(draftTimer);
+        clearTimeout(validationTimer);
+        document.querySelector('.draft-banner')?.remove();
+        formErrors.clear();
         releaseMediaUrls();
         selectedPath = null;
         editor = null;
@@ -4740,6 +4785,7 @@ const StatusInfoManager = {
         stopRun();
         renderLog();
         refresh();
+        if (dirty) scheduleDraft();
     }
 
     function confirmDiscard() {
@@ -4792,6 +4838,12 @@ const StatusInfoManager = {
 
     // 보호를 켜면 VNC2 로 암호화해서 내보낸다. 주석·공백 지우기는 Python 빌더(--release)에서만 한다.
     async function exportCartridge() {
+        if (exporting || !flushEdits()) return;
+        if (inspect().problems.some(([level]) => level === 'error')) { selectPanel('overview'); showToast('검사 오류를 먼저 해결해 주세요'); return; }
+        exporting = true;
+        setExportBusy(true);
+        el('export-button').disabled = true;
+        try {
         const protect = el('protect-toggle').checked;
         const saveSource = protect && el('source-toggle').checked;
         let bytes;
@@ -4824,6 +4876,8 @@ const StatusInfoManager = {
         showToast(protect
             ? `${suggested} · ${formatBytes(bytes.length)} 보호해서 내보냈습니다${sourceBytes ? ` (원본 ${sourceName})` : ''}`
             : `${suggested} · ${formatBytes(bytes.length)} 내보냈습니다`);
+
+        } finally { exporting = false; setExportBusy(false); refresh({ keepViewer: true, keepForms: true }); }
     }
 
     function syncProtectOptions() {
@@ -4831,6 +4885,8 @@ const StatusInfoManager = {
     }
 
     function selectPanel(name) {
+        if (!flushEdits()) return;
+        refresh();
         document.querySelectorAll('.rail button').forEach(button => {
             button.classList.toggle('active', button.dataset.panel === name);
         });
@@ -4856,6 +4912,352 @@ const StatusInfoManager = {
     // =========================================================================
     // 이벤트
     // =========================================================================
+    // Included inside the studio closure, so editor tools share the canonical file map.
+const formErrors = new Map();
+let exporting = false;
+let draftTimer = null;
+let validationTimer = null;
+let draftDbPromise = null;
+let draftWrites = Promise.resolve();
+let lastEditAt = 0;
+
+function flushEdits() {
+    if (exporting) { showToast('내보내기가 끝날 때까지 잠시 기다려 주세요.'); return false; }
+    if (formErrors.size) { showToast('입력 오류를 먼저 고쳐 주세요. 내용은 화면에 유지됩니다.'); return false; }
+    if (editorHasUnsavedChanges()) return saveEditor() === true;
+    return true;
+}
+let busyControls = [];
+function setExportBusy(busy) {
+    document.body.setAttribute('aria-busy',String(busy));
+    if(busy){busyControls=[...document.querySelectorAll('input,textarea,select,button')].map(node=>[node,node.disabled]);busyControls.forEach(([node])=>{node.disabled=true;});}
+    else {busyControls.forEach(([node,disabled])=>{node.disabled=disabled;});busyControls=[];}
+}
+
+function ui(tag, text, className) {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+}
+function action(text, handler) {
+    const button = ui('button', text, 'btn'); button.type = 'button';
+    button.addEventListener('click', handler); return button;
+}
+function field(parent, label, value, options = {}) {
+    const wrap = ui('label', undefined, `field${options.wide ? ' wide' : ''}${options.check ? ' check-field' : ''}`);
+    wrap.append(ui('span', label));
+    const input = ui(options.multiline ? 'textarea' : options.choices ? 'select' : 'input');
+    if (options.choices) options.choices.forEach(([key, title]) => {
+        const option = ui('option', title); option.value = key; input.append(option);
+    });
+    if (options.check) { input.type = 'checkbox'; input.checked = value === true; }
+    else input.value = value ?? '';
+    if (options.readonly) input.readOnly = true;
+    if (options.script) input.className = 'script-editor';
+    if (options.name) input.name = options.name;
+    wrap.append(input); parent.append(wrap); return input;
+}
+function objectValue(input, label) {
+    let value;
+    try { value = JSON.parse(input.value || '{}'); } catch (error) { throw new Error(`${label}: JSON 형식을 확인해 주세요.`); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label}: 객체 { }로 적어 주세요.`);
+    return value;
+}
+function pathMap(input, label) {
+    const map = objectValue(input, label);
+    if (Object.entries(map).some(([key,value]) => !key.trim() || typeof value !== 'string' || !value.trim())) {
+        throw new Error(`${label}: 이름과 파일 경로를 문자열로 짝지어 주세요.`);
+    }
+    return map;
+}
+function pathLines(value) { return String(value).split('\n').map(line => line.trim()).filter(Boolean); }
+function updateManifest(manifest) {
+    writeManifest(manifest); project.dirty = true;
+    const name = el('loaded-name');
+    name.replaceChildren(ui('strong', manifest.name || '카트리지'), document.createTextNode(` · ${project.fileName} ● 저장 안 됨`));
+    clearTimeout(validationTimer);
+    validationTimer = setTimeout(() => {
+        if (!project) return;
+        const result = inspect(); lastCartridge = result.cartridge;
+        renderProblems(result.problems);
+        el('export-button').disabled = exporting || formErrors.size > 0 || result.problems.some(([level]) => level === 'error');
+    }, 180);
+    scheduleDraft();
+}
+function bindForm(form, key, commit) {
+    form.dataset.draftKey = key;
+    const state = ui('p', '입력은 자동 반영됩니다.', 'form-state'); form.append(state);
+    const apply = event => {
+        try { commit(event); formErrors.delete(key); state.className = 'form-state'; state.textContent = '자동 반영됨 · 내보내기로 파일을 저장하세요.'; }
+        catch (error) { formErrors.set(key, error.message); state.className = 'form-state bad'; state.textContent = error.message; }
+        el('export-button').disabled = exporting || formErrors.size > 0 || inspect().problems.some(([level]) => level === 'error');
+        scheduleDraft();
+    };
+    form.addEventListener('input', apply);
+    form.addEventListener('change', apply);
+}
+function mutateManifest(change) {
+    if (!flushEdits()) return false;
+    const manifest = readManifest(); if (!manifest) return false;
+    change(manifest); writeManifest(manifest); markDirty(); return true;
+}
+
+function renderBasicEditor() {
+    const root = el('basic-editor'); root.replaceChildren();
+    const manifest = readManifest(); if (!manifest) return;
+    const form = ui('div', undefined, 'editor-card'); const grid = ui('div', undefined, 'form-grid'); form.append(grid);
+    const name = field(grid,'작품 이름',manifest.name,{name:'name'});
+    const id = field(grid,'카트리지 ID (배포 후 바꾸면 저장 데이터가 분리됩니다)',manifest.id,{name:'id'});
+    const version = field(grid,'카트리지 버전',manifest.version,{name:'version'});
+    const author = field(grid,'제작자',manifest.author,{name:'author'});
+    const stories = field(grid,'크랙 작품 ID (쉼표 또는 줄바꿈으로 구분)',(manifest.storyIds || []).join('\n'),{name:'storyIds',multiline:true});
+    const cover = field(grid,'표지 이미지 경로 또는 URL',manifest.coverUrl,{name:'coverUrl'});
+    const description = field(grid,'작품 설명',manifest.description,{name:'description',wide:true,multiline:true});
+    bindForm(form,'basic',() => {
+        if (!id.value.trim() || !name.value.trim()) throw new Error('카트리지 ID와 작품 이름을 입력해 주세요.');
+        const current = readManifest();
+        Object.assign(current,{id:id.value.trim(),name:name.value.trim(),version:version.value.trim(),author:author.value,
+            storyIds:stories.value.split(/[,\s]+/).filter(Boolean),coverUrl:cover.value.trim(),description:description.value});
+        updateManifest(current);
+    });
+    root.append(form);
+}
+
+function openingItems(manifest = readManifest()) {
+    const opening = manifest?.presentation?.opening;
+    if (!opening) return [];
+    return (Array.isArray(opening) ? opening : [opening]).map((item,index) => (
+        typeof item === 'string' ? {title:`오프닝 ${index+1}`,content:item} : {...item}
+    ));
+}
+function setOpenings(manifest, items) { manifest.presentation ||= {}; manifest.presentation.opening = items; }
+function renderOpenings() {
+    el('opening-preview').hidden=true;
+    const root = el('opening-list'); root.replaceChildren();
+    const items = openingItems();
+    if (!items.length) root.append(ui('p','아직 오프닝이 없습니다. 위의 버튼으로 첫 장면을 만들어 보세요.','empty-state'));
+    items.forEach((opening,index) => {
+        const form = ui('div',undefined,'editor-card'); form.append(ui('h3',`오프닝 ${index+1}`));
+        const grid = ui('div',undefined,'form-grid'); form.append(grid);
+        const title = field(grid,'시작 화면에 표시할 제목',opening.title,{wide:true,name:'title'});
+        const content = field(grid,'대본 — 지문은 *내용*, 대사는 "**이름** | 내용"',Array.isArray(opening.content)?opening.content.join('\n'):opening.content,{wide:true,multiline:true,script:true,name:'content'});
+        bindForm(form,`opening:${index}`,() => {
+            const manifest=readManifest(), current=openingItems(manifest);
+            current[index]={...current[index],title:title.value,content:content.value}; setOpenings(manifest,current); updateManifest(manifest);
+        });
+        const tools=ui('div',undefined,'toolbar');
+        const image=ui('select'); image.setAttribute('aria-label',`오프닝 ${index+1}에 삽입할 그림`);
+        const placeholder=ui('option','삽입할 이미지 선택'); placeholder.value=''; image.append(placeholder);
+        const names=new Set([...mediaEntries().filter(entry=>entry.kind==='image').map(entry=>entry.name),...Object.keys(readManifest()?.assets?.images||{})]);
+        [...names].sort().forEach(name=>{const option=ui('option',name);option.value=name;image.append(option);});
+        tools.append(image,action('이미지 코드 넣기',()=>{
+            if (!image.value) return;
+            const start=content.selectionStart,end=content.selectionEnd;
+            content.setRangeText(`${start>0&&content.value[start-1]!=='\n'?'\n':''}![${image.value}]\n`,start,end,'end'); content.dispatchEvent(new Event('input',{bubbles:true})); content.focus();
+        }),action('간단 미리보기',()=>previewOpening(index)));
+        const reorder = delta => mutateManifest(manifest=>{const current=openingItems(manifest);const target=index+delta;if(target<0||target>=current.length)return;[current[index],current[target]]=[current[target],current[index]];setOpenings(manifest,current);});
+        const up=action('위로',()=>reorder(-1));up.disabled=index===0;
+        const down=action('아래로',()=>reorder(1));down.disabled=index===items.length-1;
+        tools.append(up,down,action('오프닝 삭제',()=>{if(window.confirm('이 오프닝을 삭제할까요?'))mutateManifest(manifest=>{const current=openingItems(manifest);current.splice(index,1);setOpenings(manifest,current);});}));
+        form.append(tools);root.append(form);
+    });
+}
+function resolveOpeningImage(name) {
+    const definition=readManifest()?.assets?.images?.[name];
+    const path=typeof definition==='string'?definition:definition?.path||definition?.url;
+    const entry=mediaEntries().find(item=>item.kind==='image' && item.name===name);
+    const source=path || entry?.path;
+    if (!source) return null;
+    const url=project.files.has(source)?mediaUrl(source):/^(https?:\/\/|data:image\/|blob:)/i.test(source)?source:null;
+    return {url,background:definition?.kind==='background'||/^bg[_-]/i.test(name)||/(^|\/)g\//.test(source)};
+}
+function previewOpening(index) {
+    if (!flushEdits()) return;
+    const opening=openingItems()[index];if(!opening)return;
+    const root=el('opening-preview');root.replaceChildren();root.hidden=false;
+    root.append(ui('h3',opening.title || `오프닝 ${index+1}`),ui('p','대본 순서와 그림을 확인하는 간단 미리보기입니다. 음악·애니메이션·분기 실행은 실제 엔진에서 확인해 주세요.','field-help'));
+    const scene=ui('div',undefined,'opening-scene'),character=ui('img',undefined,'opening-character'),dialogue=ui('div',undefined,'opening-dialogue');
+    character.alt='오프닝 인물';character.hidden=true;scene.append(character,dialogue);root.append(scene);
+    const lines=String(opening.content||'').split('\n').map(line=>line.trim()).filter(Boolean);let cursor=0;
+    const advance=()=>{
+        while(cursor<lines.length){
+            const line=lines[cursor++],image=line.match(/^!\[([^\]]+)\]/);
+            if(image){const asset=resolveOpeningImage(image[1]);if(asset?.url){if(asset.background)scene.style.backgroundImage=`url(${JSON.stringify(asset.url)})`;else{character.src=asset.url;character.hidden=false;}}else dialogue.textContent=`그림을 찾을 수 없습니다: ${image[1]}`;continue;}
+            const spoken=line.match(/^["“]?\*\*([^*]+)\*\*\s*[|｜]\s*(.*?)["”]?$/);
+            dialogue.replaceChildren();if(spoken)dialogue.append(ui('b',spoken[1]),document.createTextNode(spoken[2]));else dialogue.textContent=line.replace(/^\*|\*$/g,'');
+            return;
+        }
+        dialogue.append(ui('p','오프닝 끝'));next.disabled=true;
+    };
+    const toolbar=ui('div',undefined,'toolbar'),next=action('다음 줄',advance);
+    toolbar.append(next,action('처음부터',()=>previewOpening(index)));root.append(toolbar);advance();root.scrollIntoView({block:'nearest'});
+}
+
+function editProjectFile(path) {
+    if (!flushEdits()) return;
+    if (!project.files.has(path)) {showToast(`파일이 없습니다: ${path}`);return;}
+    selectedPath=path;selectPanel('files');renderTree();renderViewer();
+}
+function nextModuleId(type,manifest=readManifest()) {
+    let n=1;while((manifest.modules||[]).some(module=>module.id===`${type}-${n}`)||[...project.files.keys()].some(path=>path.startsWith(`modules/${type}-${n}/`)))n++;
+    return `${type}-${n}`;
+}
+function createModule(type) {
+    if(!flushEdits())return;
+    const manifest=readManifest();if(!manifest)return;
+    const id=nextModuleId(type,manifest),folder=`modules/${id}`,title=type==='service'?'새 상시 모듈':'새 화면';
+    const module={id,type:type==='stage'?'view':type,title,enabled:true,version:1,entry:`${folder}/index.html`,scripts:[`${folder}/index.js`],config:type==='stage'?{stage:true}:{}};
+    const html='<!doctype html>\n<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>'+(type==='service'?'':'<main><h1>새 화면</h1><p id="message">여기서 화면을 만들어 보세요.</p><button id="close">닫기</button></main>')+'</body></html>\n';
+    const script=type==='service'?"(() => {\n    'use strict';\n    // 상태창이 갱신되면 실행됩니다.\n    VNCartridge.on('status', status => {\n        console.log('상태창 갱신', status.environment);\n    });\n})();\n":"(() => {\n    'use strict';\n    document.getElementById('close').addEventListener('click', () => VNCartridge.close());\n})();\n";
+    project.files.set(module.entry,encoder.encode(html));project.files.set(module.scripts[0],encoder.encode(script));
+    if(type!=='service'){module.styles=[`${folder}/styles.css`];project.files.set(module.styles[0],encoder.encode('body{margin:0;padding:24px;background:#102134;color:#eaf8ff;font:16px system-ui}button{padding:10px 16px;cursor:pointer}\n'));}
+    manifest.modules ||= [];manifest.modules.push(module);writeManifest(manifest);markDirty();selectPanel('modules');showToast(`${title}을 만들었습니다`);
+}
+function duplicateModule(id) {
+    if(!flushEdits())return;
+    const manifest=readManifest(), original=manifest.modules.find(module=>module.id===id);if(!original)return;
+    const copy=JSON.parse(JSON.stringify(original)),newId=nextModuleId(original.type,manifest),oldFolder=parentOf(original.entry||''),newFolder=`modules/${newId}`;
+    const remaps=new Map();if(oldFolder)project.files.forEach((bytes,path)=>{if(path.startsWith(`${oldFolder}/`))remaps.set(path,`${newFolder}/${path.slice(oldFolder.length+1)}`);});
+    remaps.forEach((to,from)=>project.files.set(to,project.files.get(from).slice()));
+    const remap=path=>remaps.get(path)||path;copy.id=newId;copy.title=`${original.title||id} 복사본`;copy.entry=remap(copy.entry);
+    ['scripts','styles'].forEach(key=>{if(Array.isArray(copy[key]))copy[key]=copy[key].map(remap);});
+    ['images','dataFiles'].forEach(key=>{if(copy[key])Object.keys(copy[key]).forEach(name=>copy[key][name]=remap(copy[key][name]));});
+    manifest.modules.push(copy);writeManifest(manifest);markDirty();showToast('모듈과 해당 폴더의 파일을 복제했습니다');
+}
+function renderModules(cartridge) {
+    const root=el('module-list');root.replaceChildren();const manifest=readManifest(),modules=manifest?.modules||[];
+    el('count-modules').textContent=modules.length;
+    if(!modules.length){root.append(ui('p','화면 모듈 또는 상시 모듈을 만들면 기본 파일도 함께 생성됩니다.','empty-state'));return;}
+    modules.forEach(module=>{
+        const form=ui('details',undefined,'editor-card');form.open=true;form.append(ui('summary',`${module.title||module.id} · ${module.type} · ${module.id}`));
+        const grid=ui('div',undefined,'form-grid');form.append(grid);
+        const id=field(grid,'모듈 ID (저장 데이터 연결을 위해 유지됩니다)',module.id,{readonly:true,name:'id'});
+        const title=field(grid,'표시 이름',module.title,{name:'title'});
+        const kinds=[['view','화면 모듈'],['service','상시 모듈'],['builtin','내장 모듈 정의'],['custom','사용자 모듈 정의']];
+        if(!kinds.some(([key])=>key===module.type))kinds.push([module.type,module.type]);
+        const type=field(grid,'종류',module.type,{name:'type',choices:kinds});
+        const enabled=field(grid,'모듈 사용',module.enabled!==false,{check:true,name:'enabled'});
+        const entry=field(grid,'HTML 파일 경로',module.entry,{wide:true,name:'entry'});
+        const scripts=field(grid,'스크립트 경로 (한 줄에 하나)',(module.scripts||[]).join('\n'),{multiline:true,name:'scripts'});
+        const styles=field(grid,'스타일 경로 (한 줄에 하나)',(module.styles||[]).join('\n'),{multiline:true,name:'styles'});
+        const data=field(grid,'데이터 파일 — {"이름":"파일 경로"}',JSON.stringify(module.dataFiles||{},null,2),{multiline:true,name:'dataFiles'});
+        const images=field(grid,'모듈 그림 — {"이름":"그림 경로"}',JSON.stringify(module.images||{},null,2),{multiline:true,name:'images'});
+        const config=field(grid,'모듈 설정 (JSON)',JSON.stringify(module.config||{},null,2),{wide:true,multiline:true,name:'config'});
+        const stage=field(grid,'VN 시작 시 전체 화면으로 사용',module.config?.stage===true,{name:'stage',check:true});
+        const token=field(grid,'입력창 명령어 (선택)',module.command?.token||'',{name:'command'});
+        const menu=field(grid,'메뉴에 표시',module.menu!==false,{name:'menu',check:true});
+        bindForm(form,`module:${module.id}`,event=>{
+            const dataFiles=pathMap(data,'데이터 파일'), imageMap=pathMap(images,'모듈 그림'), configuration=objectValue(config,'모듈 설정');
+            if(event?.target===stage){configuration.stage=stage.checked;config.value=JSON.stringify(configuration,null,2);}
+            else stage.checked=configuration.stage===true;
+            if(['view','service'].includes(type.value)&&!entry.value.trim())throw new Error('HTML 파일 경로를 입력해 주세요.');
+            const current=readManifest(),target=current.modules.find(item=>item.id===module.id);if(!target)return;
+            Object.assign(target,{title:title.value,type:type.value,enabled:enabled.checked,entry:entry.value.trim(),scripts:pathLines(scripts.value),styles:pathLines(styles.value),dataFiles,images:imageMap,config:configuration});
+            target.menu=menu.checked?(module.menu && typeof module.menu==='object'?module.menu:true):false;
+            if(token.value.trim())target.command={...(target.command||{}),token:token.value.trim()};else delete target.command;
+            updateManifest(current);
+        });
+        const links=ui('div',undefined,'code-links');
+        const refreshLinks=()=>{
+            links.replaceChildren();const current=readManifest()?.modules?.find(item=>item.id===module.id)||module;
+            [current.entry,...(current.scripts||[]),...(current.styles||[]),...Object.values(current.dataFiles||{})].filter(Boolean).forEach(path=>links.append(action(`편집: ${path}`,()=>editProjectFile(path))));
+        };refreshLinks();form.addEventListener('input',refreshLinks);form.addEventListener('change',refreshLinks);form.append(links);
+        const toolbar=ui('div',undefined,'toolbar');
+        toolbar.append(action('모듈 실행',()=>{
+            if(!flushEdits())return;selectPanel('runner');
+            if(type.value==='service'){stopRun();StatusInfoManager.parse(el('status-text').value);CartridgeRuntime.activate(lastCartridge,project.files);el('run-frame-box').replaceChildren(ui('div','상시 모듈을 실행 중입니다. 상태와 로그를 확인해 주세요.','placeholder'));runningModuleId=module.id;appendLog('log','상시 모듈 실행');renderRunnerSide();}
+            else{el('run-module').value=module.id;startRun();}
+        }),action('복제',()=>duplicateModule(module.id)),action('모듈 제거',()=>{
+            if(!window.confirm('모듈 정의를 제거할까요? 구성 파일은 보관됩니다.'))return;
+            formErrors.delete(`module:${module.id}`);
+            mutateManifest(current=>{current.modules=current.modules.filter(item=>item.id!==module.id);});
+        }));form.append(toolbar);root.append(form);
+    });
+}
+
+function draftDb() {
+    if(!draftDbPromise)draftDbPromise=new Promise((resolve,reject)=>{
+        const request=indexedDB.open('vn-studio-drafts-v1',1);
+        request.onupgradeneeded=()=>request.result.createObjectStore('drafts');
+        request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);
+    });
+    return draftDbPromise;
+}
+function snapshotDraft() {
+    const files=new Map(project.files);
+    if(editorHasUnsavedChanges())files.set(editor.path,encoder.encode(editor.textarea.value));
+    const forms=[...document.querySelectorAll('[data-draft-key]')].map(form=>({key:form.dataset.draftKey,fields:[...form.querySelectorAll('[name]')].map(input=>({name:input.name,value:input.type==='checkbox'?input.checked:input.value}))}));
+    return {version:1,files:[...files],folders:[...project.folders],fileName:project.fileName,savedAt:lastEditAt||Date.now(),forms};
+}
+function scheduleDraft() {
+    if(!project)return;
+    lastEditAt=Date.now();
+    el('draft-status').textContent='브라우저 임시 저장 대기 중 · 배포 파일은 내보내기로 저장하세요';
+    clearTimeout(draftTimer);draftTimer=setTimeout(saveDraftNow,800);
+}
+function saveDraftNow() {
+    if(!project)return;
+    const owner=project,snapshot=snapshotDraft();
+    draftWrites=draftWrites.catch(()=>{}).then(async()=>{
+        const db=await draftDb();if(project!==owner)return;
+        await new Promise((resolve,reject)=>{
+            const tx=db.transaction('drafts','readwrite'),store=tx.objectStore('drafts'),request=store.get('last');
+            request.onsuccess=()=>{if(!request.result||request.result.savedAt<=snapshot.savedAt)store.put(snapshot,'last');};
+            tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+        });
+        if(project===owner)el('draft-status').textContent=`브라우저 임시 저장됨 ${new Date(snapshot.savedAt).toLocaleTimeString('ko-KR')} · 내보내기로 원본 파일도 보관하세요`;
+    }).catch(error=>{el('draft-status').textContent='브라우저 임시 저장을 사용할 수 없습니다. 내보내기로 저장해 주세요.';console.warn('Studio draft:',error);});
+}
+async function findDraft() {
+    try {
+        const db=await draftDb();const draft=await new Promise((resolve,reject)=>{const request=db.transaction('drafts').objectStore('drafts').get('last');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+        if(!draft?.files?.length)return;
+        const banner=ui('div',undefined,'draft-banner');banner.append(ui('span',`이 브라우저에 ${new Date(draft.savedAt).toLocaleString('ko-KR')} 작업이 남아 있습니다.`));
+        banner.append(action('이전 작업 복구',()=>{
+            if(!confirmDiscard())return;
+            startProject(new Map(draft.files),draft.fileName,true);project.folders=new Set(draft.folders||[]);refresh();
+            (draft.forms||[]).forEach(saved=>{
+                const form=[...document.querySelectorAll('[data-draft-key]')].find(item=>item.dataset.draftKey===saved.key);if(!form)return;
+                saved.fields.forEach(value=>{const input=[...form.querySelectorAll('[name]')].find(item=>item.name===value.name);if(input){if(input.type==='checkbox')input.checked=value.value;else input.value=value.value;}});
+                const input=form.querySelector('[name]');if(input)input.dispatchEvent(new Event('input',{bubbles:true}));
+            });
+            banner.remove();scheduleDraft();showToast('이전 작업을 복구했습니다');
+        }),action('닫기',()=>banner.remove()));
+        document.querySelector('.topbar').after(banner);
+    } catch(error) {el('draft-status').textContent='브라우저 임시 저장을 사용할 수 없습니다. 내보내기로 저장해 주세요.';}
+}
+// Route view navigation into the runner, and refuse VN-screen-only APIs gracefully.
+const engineMessageHandler=CartridgeRuntime.handleMessage.bind(CartridgeRuntime);
+CartridgeRuntime.handleMessage=function(event){
+    const message=event.data,binding=this.frameBindings.get(event.source);
+    if(!binding||message?.source!=='vn-cartridge'||binding.cartridgeId!==this.activeCartridge?.manifest?.id)return;
+    const reply=(type,extra={})=>event.source?.postMessage({source:'vn-engine',type,requestId:message.requestId||null,ok:false,reason:'studio-preview',...extra},'*');
+    if(message.type==='view:close'||message.type==='stage:close'){
+        const frame=el('run-frame-box').querySelector('iframe');
+        if(frame?.contentWindow===event.source){this.unregisterFrame(frame);el('run-frame-box').replaceChildren(ui('div','화면을 닫았습니다. 상시 모듈은 정지를 누를 때까지 실행됩니다.','placeholder'));runningModuleId=null;renderRunnerSide();}
+        return;
+    }
+    if(message.type==='view:open'){
+        const definition=this.getOpenableModule(String(message.moduleId||''));
+        if(definition&&flushEdits()){selectPanel('runner');el('run-module').value=definition.id;mountRunnerView(definition);reply('view:opened',{ok:true});}
+        else reply('view:opened');
+        return;
+    }
+    const unsupported={'chat:send':'chat:sent','chat:commit':'chat:committed','choice:show':'choice:chosen','home:talk':'home:talk-result','image:show':'image:shown','music:play':'music:played','music:stop':'music:stopped'};
+    if(message.type==='script:play'){appendLog('warn','대본 재생은 실제 VN 엔진에서 확인해 주세요.');reply('script:ended',{scriptId:message.scriptId,state:'refused'});return;}
+    if(unsupported[message.type]){appendLog('warn',`${message.type} 기능은 실제 VN 엔진에서 확인해 주세요.`);reply(unsupported[message.type]);return;}
+    return engineMessageHandler(event);
+};
+
+el('add-opening').addEventListener('click',()=>mutateManifest(manifest=>{const items=openingItems(manifest);items.push({title:`오프닝 ${items.length+1}`,content:'*새로운 이야기가 시작된다.*'});setOpenings(manifest,items);}));
+el('add-view').addEventListener('click',()=>createModule('view'));
+el('add-service').addEventListener('click',()=>createModule('service'));
+el('add-stage').addEventListener('click',()=>createModule('stage'));
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&project)saveDraftNow();});
+findDraft();
+
+
     el('engine-badge').textContent = `ENGINE ${ENGINE_VERSION}`;
     const cartridgeInput = el('file-input');
     const assetInput = el('asset-input');
@@ -4892,11 +5294,13 @@ const StatusInfoManager = {
     el('status-text').value = DEFAULT_STATUS_TEXT;
     el('status-text').addEventListener('input', () => {
         StatusInfoManager.parse(el('status-text').value);
+        if (lastCartridge) CartridgeRuntime.broadcast(lastCartridge.manifest.id, { type: 'status:update', status: StatusInfoManager.getRuntimeData() });
         renderStatusSummary();
     });
     el('status-reset').addEventListener('click', () => {
         el('status-text').value = DEFAULT_STATUS_TEXT;
         StatusInfoManager.parse(DEFAULT_STATUS_TEXT);
+        if (lastCartridge) CartridgeRuntime.broadcast(lastCartridge.manifest.id, { type: 'status:update', status: StatusInfoManager.getRuntimeData() });
         renderStatusSummary();
         showToast('상태창을 기본값으로 되돌렸습니다');
     });
@@ -4948,7 +5352,7 @@ const StatusInfoManager = {
     });
 
     window.addEventListener('beforeunload', event => {
-        if (project?.dirty || editorHasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; }
+        if (project?.dirty || editorHasUnsavedChanges() || formErrors.size > 0) { event.preventDefault(); event.returnValue = ''; }
     });
 
     // 테스트와 디버깅용
