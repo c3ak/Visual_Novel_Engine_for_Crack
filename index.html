@@ -178,14 +178,14 @@ footer { border-top: 1px solid var(--line); padding-block: 20px 32px; color: var
                 <div class="platform"></div>
                 <div class="figure away" id="demo-figure"><i class="head"></i><i class="body"></i></div>
                 <div class="status-bar" aria-label="정보 바">
-                    <span>3412년 05월 11일</span><span>금요일</span><span>21:40</span><span>밤</span><span>🌧️</span><span>아우로라 - 정거장 로비</span>
+                    <span>2026년 05월 15일</span><span>금요일</span><span>18:30</span><span>저녁</span><span>🌧️</span><span>동네 카페 · 창가 자리</span>
                 </div>
                 <div class="menu-btn">☰ 메뉴</div>
                 <div class="stage-buttons"><span>로그</span><span class="send" id="demo-send">대화 입력</span></div>
                 <div class="dialogue">
                     <div class="name-tag" id="demo-name" hidden></div>
                     <span class="back" aria-hidden="true">‹</span>
-                    <p class="line narration" id="demo-line">비 내리는 정거장. 마지막 셔틀이 막 떠났다.</p>
+                    <p class="line narration" id="demo-line">창밖으로 비가 내리고, 카페 안에는 잔잔한 음악이 흐른다.</p>
                 </div>
                 <div class="next-hint" id="demo-hint">눌러서 다음 ▸</div>
             </div>
@@ -378,9 +378,9 @@ footer { border-top: 1px solid var(--line); padding-block: 20px 32px; color: var
 
     // 예시 VN 화면: 누르면 다음 줄. 마지막 줄 뒤에는 「대화 입력」 을 가리키고 처음으로 돌아간다.
     const lines = [
-        { name: null, text: '비 내리는 정거장. 마지막 셔틀이 막 떠났다.', figure: false },
-        { name: '리텐', text: '늦었네. 다음 셔틀까지는 세 시간이야.', figure: true },
-        { name: '리텐', text: '기다리는 동안 이야기나 할까?', figure: true }
+        { name: null, text: '창밖으로 비가 내리고, 카페 안에는 잔잔한 음악이 흐른다.', figure: false },
+        { name: '지우', text: '왔구나. 비 많이 맞지는 않았어?', figure: true },
+        { name: '지우', text: '따뜻한 차 한 잔 마시면서 천천히 이야기하자.', figure: true }
     ];
     const stage = document.getElementById('demo');
     const lineEl = document.getElementById('demo-line');
